@@ -1,0 +1,130 @@
+# Dependency directories
+/vendor/
+/node_modules/
+
+# Build artifacts
+/public/
+/build/
+/dist/
+
+# Development files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Composer files (keep composer.json and composer.lock)
+/composer.phar
+/composer.lock.dev
+# Frontend Assets      
+
+# Vite specific
+.vite/
+*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Source maps
+*.map
+
+# CSS source maps
+*.css.map
+
+# Cache directories
+.cache/
+.parcel-cache/
+# Package Managers     
+
+# npm
+package-lock.json
+
+# Yarn
+.yarn/
+.yarnrc.yml
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# pnpm
+pnpm-lock.yaml
+pnpm-debug.log*
+
+# Bun
+.bun.lockb
+# Temporary files      
+
+.tmp/
+temp/
+tmp/
+# WordPress Specific   
+
+# WordPress core (if included by mistake)
+/wp/
+/wordpress/
+
+# Uploads directory
+/uploads/
+
+# Plugin zip files (build outputs)
+*.zip
+# Testing              
+
+# PHPUnit
+/phpunit.xml
+/tests/_output/
+/tests/_support/_generated/
+
+# Jest
+/coverage/
+/jest-*.json
+
+# Code coverage
+/clover.xml
+/coverage/
+# Documentation        
+
+# Generated documentation
+/docs/_build/
+/docs/_static/
+# PHPStan & PHPCS      
+
+# PHPStan result cache
+.phpstan/cache/
+
+# PHPCS cache
+.phpcs-cache
+# Storybook (si usas)  
+
+/storybook-static/
+/storybook-out/
+*storybook.log
+
+# Custom               
+
