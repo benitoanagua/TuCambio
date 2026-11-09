@@ -40,7 +40,7 @@ Postgres es el núcleo transaccional. Supabase Auth identifica usuarios. Las mem
 8. MFA TOTP se recomienda para administradores y acciones sensibles; la exigencia se valida en backend/RLS, no solo en la interfaz.
 9. OAuth, SMS y SSO solo se habilitan cuando haya credenciales, dominio, redirect URLs, política y coste aprobados.
 
-**M1.1 implementado en migración versionada:** perfiles, tenants, membresías, roles configurables, catálogo de capacidades, asignaciones, invitaciones y auditoría de seguridad. El detalle del contrato está en [IDENTITY.md](./IDENTITY.md). Las tablas tienen RLS habilitado. M1.1 dejó el acceso de clientes en default deny; M1.5 añade únicamente lecturas autenticadas con políticas por tenant y administración, sin DML desde el cliente. M1.6 añade el contrato de metadata y políticas de Storage para cargas pendientes y lecturas verificadas. La autorización de comandos financieros sigue en Ktor.
+**M1.1 implementado en migración versionada:** perfiles, tenants, membresías, roles configurables, catálogo de capacidades, asignaciones, invitaciones y auditoría de seguridad. El detalle del contrato está en [IDENTITY.md](./IDENTITY.md). Las tablas tienen RLS habilitado. M1.1 dejó el acceso de clientes en default deny; M1.5 añade únicamente lecturas autenticadas con políticas por tenant y administración, sin DML desde el cliente. M1.6 añade el contrato de metadata y políticas de Storage para cargas pendientes y lecturas verificadas. La autorización de comandos financieros sigue en Ktor. El flujo de evidencias usa URLs firmadas de corta duración y valida bytes, tamaño, firma MIME y SHA-256 antes de marcar un objeto disponible; no incluye todavía análisis antimalware ni asociación a operaciones financieras.
 
 ## Flujos críticos
 
@@ -86,7 +86,7 @@ El plan Free sirve para desarrollo y pilotos de bajo riesgo, no como compromiso 
 - [ ] M1.3 Supabase Auth: registro, login, logout, refresh, verificación y recuperación mediante flujos administrados por Auth (integración de cliente pendiente).
 - [x] M1.4 Ktor: resolución de membresía activa y capacidades vigentes desde PostgreSQL mediante función server-only; endpoint protegido de consulta de autorización.
 - [x] M1.5 RLS: políticas de lectura autenticada por tenant, helpers de membresía/capacidad y pruebas negativas de aislamiento.
-- [ ] M1.6 Storage: bucket privado, metadata, límites, funciones backend-only y políticas tenant-aware (PR en revisión; adaptador HTTP Ktor pendiente).
+- [ ] M1.6 Storage: bucket privado, metadata, límites, funciones backend-only, políticas tenant-aware y adaptador HTTP Ktor para carga/validación/descarga (PR de integración en revisión).
 - [ ] M1.7 Operaciones/movimientos/tasas con transacciones e idempotencia.
 - [ ] M1.8 Realtime para vistas autorizadas.
 - [ ] M1.9 Outbox, Queues y worker.
