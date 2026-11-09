@@ -31,6 +31,12 @@ Puerto por defecto: `8080`, configurable mediante `PORT`.
 | `POST /api/v1/tenants/{tenantId}/evidence` | Crea metadata pending y devuelve URL firmada de carga |
 | `POST /api/v1/tenants/{tenantId}/evidence/{evidenceId}/complete` | Verifica bytes, tamaño, firma MIME y SHA-256; finaliza la evidencia |
 | `GET /api/v1/tenants/{tenantId}/evidence/{evidenceId}/download-url` | Emite URL firmada de descarga por 60 segundos para evidencia disponible |
+| `POST /api/v1/tenants/{tenantId}/currencies` | Alta idempotente de moneda del tenant |
+| `POST /api/v1/tenants/{tenantId}/currency-pairs` | Alta idempotente de par de monedas |
+| `POST /api/v1/tenants/{tenantId}/currency-rates` | Alta idempotente de tasa con vigencia |
+| `POST /api/v1/tenants/{tenantId}/operations` | Crea operación financiera en estado inicial |
+| `POST /api/v1/tenants/{tenantId}/movements` | Registra movimiento externo declarado |
+| `POST /api/v1/tenants/{tenantId}/movement-associations` | Asocia un movimiento a una operación con rol ORIGIN o DESTINATION |
 
 Los endpoints de API requieren Bearer access token válido de Supabase. Sin `SUPABASE_URL`, responden 503.
 
@@ -76,3 +82,21 @@ CI valida migraciones en PostgreSQL 17, ejecuta pruebas Kotlin y construye la im
 La clave `SUPABASE_SERVICE_ROLE_KEY` omite las políticas RLS de Storage. Su uso está confinado al backend después de que el caso de uso y la función PostgreSQL hayan autorizado el actor y la ruta. Nunca debe enviarse a apps, registrarse en logs ni incluirse en respuestas. Las URLs firmadas también son credenciales temporales: no registrarlas y no almacenarlas más allá de la operación.
 
 La inspección actual verifica tamaño, firma de archivo y SHA-256; todavía no realiza análisis antivirus/antimalware, extracción de contenido ni asociación con una entidad de operación financiera. Esas tareas deben completarse antes de usar evidencias en procesos financieros productivos.
+
+## Comandos financieros (M1.7.3)
+
+Todos los seis comandos requieren JWT Supabase y el header `Idempotency-Key` (1–200 caracteres). El actor siempre se toma del subject del JWT; el tenant se toma de la ruta y se vuelve a autorizar dentro de la función PostgreSQL. El cuerpo nunca puede elegir actor ni membership.
+
+Los cuerpos JSON son:
+- `currencies`: `code`, `name`, `decimalPlaces` (0–18).
+- `currency-pairs`: `baseCurrencyCode`, `quoteCurrencyCode`.
+- `currency-rates`: `pairId`, `buyRate`, `sellRate`, `validFrom`, `validUntil` opcional. Importes decimales se envían como cadenas; fechas como ISO-8601 con offset.
+- `operations`: `pairId`, `sourceCurrencyCode`, `targetCurrencyCode`, `requestedAmount`.
+- `movements`: `currencyCode`, `amount`, `effectiveAt`, `externalReference` y `description` opcionales.
+- `movement-associations`: `operationId`, `movementId`, `movementRole` (`ORIGIN` o `DESTINATION`).
+
+La API calcula SHA-256 del DTO serializado y lo envía junto con la clave de idempotencia a PostgreSQL. Misma clave y mismo hash devuelven el recurso anterior (HTTP 200); mismo ámbito y clave con cuerpo distinto produce HTTP 409. Una creación nueva responde HTTP 201. Los errores de autorización responden 403; referencias o conflictos de dominio 409; validaciones de dominio 422; indisponibilidad de base de datos 503. No se exponen mensajes SQL.
+
+La conexión `DATABASE_URL` debe usar una credencial privada de servidor miembro de `tucambio_backend`. Ese rol recibe EXECUTE únicamente sobre las funciones de comando; no obtiene DML directo sobre las tablas financieras ni BYPASSRLS. Los eventos de dominio y la idempotencia se persisten en la misma transacción PostgreSQL que la escritura.
+
+Estos endpoints no confirman movimientos, no aplican tasas automáticamente, no calculan importes finales ni liquidan operaciones. Esas transiciones y reglas requieren especificación aprobada; no se infieren desde el alta o la asociación.
