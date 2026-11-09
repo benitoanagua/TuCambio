@@ -361,10 +361,6 @@ create table public.financial_domain_events (
 create index financial_domain_events_entity_time_idx
   on public.financial_domain_events(tenant_id, entity_type, entity_id, occurred_at);
 
-create trigger financial_command_idempotency_append_only
-before update or delete on public.financial_command_idempotency
-for each row execute function public.reject_financial_link_mutation();
-
 create table public.financial_command_idempotency (
   tenant_id uuid not null,
   actor_user_id uuid not null,
@@ -380,6 +376,10 @@ create table public.financial_command_idempotency (
   constraint financial_command_idempotency_actor_fk foreign key (tenant_id, actor_user_id)
     references public.tenant_memberships(tenant_id, user_id) on delete restrict
 );
+
+create trigger financial_command_idempotency_append_only
+before update or delete on public.financial_command_idempotency
+for each row execute function public.reject_financial_link_mutation();
 
 -- Rate intervals are half-open [valid_from, valid_until). Overlap is rejected
 -- under a per-tenant/pair transaction lock; gaps remain valid domain states.
