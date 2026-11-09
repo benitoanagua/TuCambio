@@ -53,6 +53,23 @@ class ApplicationTest {
     }
 
     @Test
+    fun financialCommandEndpointsFailClosedWhenAuthenticationIsNotConfigured() = testApplication {
+        application { module(authConfig = null) }
+        val tenant = "52000000-0000-0000-0000-000000000001"
+        val paths = listOf(
+            "/api/v1/tenants/$tenant/currencies",
+            "/api/v1/tenants/$tenant/currency-pairs",
+            "/api/v1/tenants/$tenant/currency-rates",
+            "/api/v1/tenants/$tenant/operations",
+            "/api/v1/tenants/$tenant/movements",
+            "/api/v1/tenants/$tenant/movement-associations"
+        )
+        paths.forEach { path ->
+            assertEquals(HttpStatusCode.ServiceUnavailable, client.post(path).status)
+        }
+    }
+
+    @Test
     fun rootEndpointIdentifiesService() = testApplication {
         application { module() }
 
