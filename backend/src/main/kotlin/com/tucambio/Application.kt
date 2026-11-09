@@ -35,6 +35,7 @@ fun Application.module(
     tenantAccessRepository: TenantAccessRepository? = null,
     evidenceRepository: EvidenceRepository? = null,
     evidenceStorage: EvidenceObjectStorage? = null,
+    evidenceReviewRepository: EvidenceReviewRepository? = null,
     financialCommandRepository: FinancialCommandRepository? = null
 ) {
     install(CallLogging)
@@ -55,6 +56,12 @@ fun Application.module(
     val evidenceWorkflow = if (effectiveEvidenceRepository != null && effectiveEvidenceStorage != null) {
         EvidenceWorkflowService(effectiveEvidenceRepository, effectiveEvidenceStorage)
     } else null
+    val effectiveEvidenceReviewRepository = evidenceReviewRepository
+        ?: if (authConfig != null) PostgresEvidenceReviewRepository.fromEnvironment() else null
+    val evidenceReview = effectiveEvidenceReviewRepository?.let(::EvidenceReviewService)
+    if (effectiveEvidenceReviewRepository != null && evidenceReviewRepository == null) {
+        monitor.subscribe(ApplicationStopped) { effectiveEvidenceReviewRepository.close() }
+    }
     val effectiveFinancialCommandRepository = financialCommandRepository
         ?: if (authConfig != null) PostgresFinancialCommandRepository.fromEnvironment() else null
     val financialCommands = effectiveFinancialCommandRepository?.let(::FinancialCommandService)
@@ -81,6 +88,7 @@ fun Application.module(
             post("/api/v1/tenants/{tenantId}/evidence") {
                 call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
             }
+            post("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/review") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             post("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/complete") {
                 call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
             }
@@ -147,6 +155,35 @@ fun Application.module(
                             }
                         } catch (_: IllegalStateException) {
                             call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_unavailable"))
+                        }
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/review") {
+                    val tenantId = call.parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    val evidenceId = call.parameters["evidenceId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
+                    val key = call.request.headers["Idempotency-Key"]
+                    if (tenantId == null || evidenceId == null) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_evidence_reference"))
+                    } else if (key.isNullOrBlank() || key.length > 200) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_idempotency_key"))
+                    } else if (evidenceReview == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_review_not_configured"))
+                    } else {
+                        try {
+                            val result = evidenceReview.review(actorId, tenantId, evidenceId, call.receive<ReviewEvidenceRequest>(), key)
+                            val resourceId = result["resourceId"]?.jsonPrimitive?.content
+                            val replayed = result["replayed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                            if (resourceId == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_review_invalid_response"))
+                            else call.respond(if (replayed) HttpStatusCode.OK else HttpStatusCode.OK, result)
+                        } catch (e: SQLException) {
+                            when (e.sqlState) {
+                                "42501" -> call.respond(HttpStatusCode.Forbidden, ErrorResponse("tenant_access_denied"))
+                                "23505" -> call.respond(HttpStatusCode.Conflict, ErrorResponse("evidence_review_conflict"))
+                                "23503" -> call.respond(HttpStatusCode.NotFound, ErrorResponse("available_evidence_not_found"))
+                                "23514", "22023" -> call.respond(HttpStatusCode.UnprocessableEntity, ErrorResponse("invalid_evidence_review_transition"))
+                                else -> call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_review_unavailable"))
+                            }
                         }
                     }
                 }
