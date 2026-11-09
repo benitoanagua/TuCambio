@@ -427,3 +427,82 @@ No se fija todavía el esquema SQL de perfiles, tenants, membresías e invitacio
 - Queues: https://supabase.com/docs/guides/queues
 - Vault: https://supabase.com/docs/guides/database/vault
 - Supabase CLI: https://supabase.com/docs/guides/cli
+
+
+## 12. Backend Kotlin/Ktor y alojamiento MVP (ADR-TC-004)
+
+**Estado:** decisión adoptada para la base técnica del MVP; despliegue remoto pendiente.  
+**Fecha:** 2026-11-09
+
+### 12.1 Decisión
+
+- Backend de aplicación: Kotlin/JVM + Ktor 3.6.1.
+- Runtime: JDK 21.
+- Build: Gradle 9.2.1.
+- Servidor HTTP: Ktor Netty.
+- Empaquetado: distribución JVM dentro de imagen Docker multi-stage.
+- Hosting del backend: Google Cloud Run.
+- Plataforma de datos: Supabase (PostgreSQL, Auth, Storage y servicios seleccionados).
+- CI: GitHub Actions compila, ejecuta pruebas y construye el contenedor. No publica ni despliega automáticamente en esta etapa.
+
+Versiones elegidas según releases estables consultadas el 9 de noviembre de 2026. Referencias:
+- Ktor releases: https://ktor.io/docs/releases.html
+- Kotlin releases: https://kotlinlang.org/docs/releases.html
+- Cloud Run container deployment: https://docs.cloud.google.com/run/docs/deploying
+
+### 12.2 Responsabilidades
+
+Cloud Run ejecuta el proceso Ktor como contenedor stateless. Supabase no aloja el proceso JVM; proporciona PostgreSQL y servicios backend administrados. Ktor es la entrada canónica de los comandos financieros, valida JWT de Supabase, resuelve tenant/capacidades y delimita transacciones PostgreSQL.
+
+No se adopta microservicios, Kubernetes, VM permanente ni Edge Functions como sustituto del backend Kotlin para el MVP.
+
+### 12.3 Perfil inicial Cloud Run
+
+Parámetros iniciales sujetos a medición y revisión:
+- CPU: 1 vCPU.
+- Memoria: 512 MiB.
+- Instancias mínimas: 0.
+- Instancias máximas: 2.
+- Concurrencia: 40 solicitudes por instancia.
+- Puerto: 8080.
+
+El máximo de instancias debe considerarse junto con el tamaño del pool PostgreSQL y los límites de conexiones de Supabase. La escala a cero reduce coste en inactividad, pero introduce latencia de arranque en la primera solicitud.
+
+La región de Cloud Run se decide junto con la región de Supabase y se valida midiendo latencia real entre servicio y base de datos. No se fija una región sin conocer el proyecto de destino.
+
+### 12.4 Base de aplicación entregada
+
+Se incorpora el esqueleto en `backend/`:
+- aplicación Ktor con rutas `/`, `/health/live` y `/health/ready`;
+- pruebas HTTP para esos endpoints;
+- configuración Gradle con toolchain JDK 21;
+- Dockerfile multi-stage y runtime no-root;
+- ejemplo de variables sin secretos;
+- guía de ejecución y despliegue Cloud Run.
+
+Mientras no se conecten PostgreSQL y Auth, `/health/ready` confirma únicamente que el proceso HTTP está inicializado; no representa una comprobación de disponibilidad de dependencias externas.
+
+### 12.5 CI y límites de automatización
+
+El workflow `.github/workflows/backend-ci.yml` ejecuta tests, genera la distribución e intenta construir la imagen Docker en pull requests y pushes relevantes. No necesita secretos cloud.
+
+Fuera de alcance automático por ahora:
+- publicar imágenes en Artifact Registry;
+- crear proyecto, repositorio de imágenes o recursos Cloud Run;
+- desplegar revisiones;
+- crear/configurar proyecto Supabase;
+- crear secretos o asignar IAM;
+- habilitar acceso público.
+
+Estas acciones requieren proyecto, región, facturación, IAM, secretos y configuración de seguridad reales. Se harán en una fase posterior, con valores explícitos y aprobación operativa.
+
+### 12.6 Criterios de aceptación
+
+- La aplicación arranca en local con JDK 21 y escucha en el puerto `PORT`.
+- Health checks responden HTTP 200 y no revelan información sensible.
+- Los tests HTTP corren en CI.
+- La imagen se construye con runtime JRE y usuario no privilegiado.
+- El contenedor escucha en 8080 y respeta `PORT`.
+- Ningún secreto ni credencial real aparece en archivos, workflow, logs o imagen.
+- El pipeline no despliega infraestructura ni publica imágenes.
+- La conexión a PostgreSQL/Auth se añade después de definir esquema, membresías y validación JWT.

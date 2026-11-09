@@ -6,6 +6,9 @@
 /public/
 /build/
 /dist/
+**/build/
+**/.gradle/
+**/.kotlin/
 
 # Development files
 *.log
@@ -16,6 +19,8 @@ yarn-error.log*
 
 # Environment files
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
@@ -51,19 +56,10 @@ Thumbs.db
 
 # Source maps
 *.map
-
-# CSS source maps
 *.css.map
 
-# Cache directories
-.cache/
-.parcel-cache/
 # Package Managers     
-
-# npm
 package-lock.json
-
-# Yarn
 .yarn/
 .yarnrc.yml
 .yarn/cache/
@@ -71,60 +67,38 @@ package-lock.json
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
-
-# pnpm
 pnpm-lock.yaml
 pnpm-debug.log*
-
-# Bun
 .bun.lockb
-# Temporary files      
 
+# Temporary files      
 .tmp/
 temp/
 tmp/
-# WordPress Specific   
 
-# WordPress core (if included by mistake)
+# WordPress Specific   
 /wp/
 /wordpress/
-
-# Uploads directory
 /uploads/
-
-# Plugin zip files (build outputs)
 *.zip
-# Testing              
 
-# PHPUnit
+# Testing              
 /phpunit.xml
 /tests/_output/
 /tests/_support/_generated/
-
-# Jest
-/coverage/
-/jest-*.json
-
-# Code coverage
+jest-*.json
 /clover.xml
 /coverage/
-# Documentation        
 
-# Generated documentation
+# Documentation        
 /docs/_build/
 /docs/_static/
+
 # PHPStan & PHPCS      
-
-# PHPStan result cache
 .phpstan/cache/
-
-# PHPCS cache
 .phpcs-cache
-# Storybook (si usas)  
 
+# Storybook
 /storybook-static/
 /storybook-out/
 *storybook.log
-
-# Custom               
-
