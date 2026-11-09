@@ -6,9 +6,8 @@ import kotlinx.serialization.json.put
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
-import kotlin.test.assertFalse
+import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
 
 class FinancialCommandServiceTest {
     private val actor = UUID.fromString("10000000-0000-0000-0000-000000000001")
