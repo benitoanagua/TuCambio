@@ -64,15 +64,25 @@ begin
   end;
 
   begin
-    insert into public.tenant_currency_pairs (tenant_id, base_currency_code, quote_currency_code)
-    values ('62000000-0000-0000-0000-000000000001', 'USD', 'USD');
+    insert into public.tenant_currency_pairs (
+      tenant_id, base_currency_code, quote_currency_code,
+      created_by_membership_id, created_by_user_id
+    ) values (
+      '62000000-0000-0000-0000-000000000001', 'USD', 'USD',
+      '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
+    );
     raise exception 'Self-referential currency pair unexpectedly accepted';
   exception when check_violation then null;
   end;
 
   begin
-    insert into public.tenant_currency_pairs (tenant_id, base_currency_code, quote_currency_code)
-    values ('62000000-0000-0000-0000-000000000001', 'USD', 'EUR');
+    insert into public.tenant_currency_pairs (
+      tenant_id, base_currency_code, quote_currency_code,
+      created_by_membership_id, created_by_user_id
+    ) values (
+      '62000000-0000-0000-0000-000000000001', 'USD', 'GBP',
+      '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
+    );
     raise exception 'Pair with unconfigured tenant currency unexpectedly accepted';
   exception when foreign_key_violation then null;
   end;
