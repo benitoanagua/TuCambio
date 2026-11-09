@@ -9,9 +9,13 @@ create table public.tenant_currencies (
   name text not null,
   decimal_places smallint not null,
   status text not null default 'active',
+  created_by_membership_id uuid not null,
+  created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (tenant_id, code),
+  constraint tenant_currencies_author_fk foreign key (tenant_id, created_by_membership_id, created_by_user_id)
+    references public.tenant_memberships(tenant_id, id, user_id) on delete restrict,
   constraint tenant_currencies_code_format check (code ~ '^[A-Z0-9]{3,12}$'),
   constraint tenant_currencies_name_length check (char_length(btrim(name)) between 1 and 80),
   constraint tenant_currencies_decimal_places check (decimal_places between 0 and 18),
@@ -24,8 +28,12 @@ create table public.tenant_currency_pairs (
   base_currency_code text not null,
   quote_currency_code text not null,
   status text not null default 'enabled',
+  created_by_membership_id uuid not null,
+  created_by_user_id uuid not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  constraint tenant_currency_pairs_author_fk foreign key (tenant_id, created_by_membership_id, created_by_user_id)
+    references public.tenant_memberships(tenant_id, id, user_id) on delete restrict,
   constraint tenant_currency_pairs_distinct check (base_currency_code <> quote_currency_code),
   constraint tenant_currency_pairs_status check (status in ('enabled', 'disabled')),
   constraint tenant_currency_pairs_tenant_id_unique unique (tenant_id, id),
@@ -59,6 +67,38 @@ create table public.currency_rates (
 
 create index currency_rates_pair_valid_from_idx
   on public.currency_rates(tenant_id, pair_id, valid_from desc);
+
+-- Currency identity/precision and pair identity are historical configuration.
+-- Availability can change, but identity and precision cannot be rewritten.
+create or replace function public.protect_currency_configuration_identity()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $
+begin
+  if tg_table_name = 'tenant_currencies' then
+    if new.tenant_id is distinct from old.tenant_id
+       or new.code is distinct from old.code
+       or new.decimal_places is distinct from old.decimal_places then
+      raise exception 'Currency identity and precision are immutable' using errcode = '55000';
+    end if;
+  elsif new.tenant_id is distinct from old.tenant_id
+     or new.id is distinct from old.id
+     or new.base_currency_code is distinct from old.base_currency_code
+     or new.quote_currency_code is distinct from old.quote_currency_code then
+    raise exception 'Currency pair identity is immutable' using errcode = '55000';
+  end if;
+  return new;
+end;
+$;
+
+create trigger tenant_currencies_identity_immutable
+before update on public.tenant_currencies
+for each row execute function public.protect_currency_configuration_identity();
+
+create trigger tenant_currency_pairs_identity_immutable
+before update on public.tenant_currency_pairs
+for each row execute function public.protect_currency_configuration_identity();
 
 create table public.financial_operations (
   id uuid primary key default gen_random_uuid(),
@@ -100,6 +140,57 @@ create table public.financial_operations (
 
 create index financial_operations_tenant_status_created_idx
   on public.financial_operations(tenant_id, status, created_at desc);
+
+-- Operation identity and requested economics never change. The applied rate
+-- can be attached once, only when it covers the verified source instant.
+create or replace function public.protect_financial_operation_facts()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $
+declare
+  rate_row public.currency_rates%rowtype;
+begin
+  if new.tenant_id is distinct from old.tenant_id
+     or new.id is distinct from old.id
+     or new.pair_id is distinct from old.pair_id
+     or new.source_currency_code is distinct from old.source_currency_code
+     or new.target_currency_code is distinct from old.target_currency_code
+     or new.requested_amount is distinct from old.requested_amount
+     or new.created_by_membership_id is distinct from old.created_by_membership_id
+     or new.created_by_user_id is distinct from old.created_by_user_id
+     or new.created_at is distinct from old.created_at then
+    raise exception 'Financial operation identity and requested amount are immutable' using errcode = '55000';
+  end if;
+
+  if old.applied_rate_id is not null and (
+       new.applied_rate_id is distinct from old.applied_rate_id
+       or new.applied_rate is distinct from old.applied_rate
+       or new.source_effective_at is distinct from old.source_effective_at
+  ) then
+    raise exception 'An applied operation rate is immutable' using errcode = '55000';
+  end if;
+
+  if old.applied_rate_id is null and new.applied_rate_id is not null then
+    if new.source_effective_at is null then
+      raise exception 'A verified source movement instant is required to apply a rate' using errcode = '23514';
+    end if;
+    select * into rate_row from public.currency_rates r
+    where r.tenant_id = new.tenant_id
+      and r.pair_id = new.pair_id
+      and r.id = new.applied_rate_id
+      and tstzrange(r.valid_from, r.valid_until, '[)') @> new.source_effective_at;
+    if not found or rate_row.buy_rate <> new.applied_rate and rate_row.sell_rate <> new.applied_rate then
+      raise exception 'Applied rate must match a rate valid at the verified source instant' using errcode = '23514';
+    end if;
+  end if;
+  return new;
+end;
+$;
+
+create trigger financial_operations_facts_immutable
+before update on public.financial_operations
+for each row execute function public.protect_financial_operation_facts();
 
 -- New operations must use the exact enabled pair and active tenant currencies.
 create or replace function public.validate_financial_operation_pair()
@@ -235,6 +326,20 @@ create index evidence_financial_links_operation_idx
 create index evidence_financial_links_movement_idx
   on public.evidence_financial_links(tenant_id, movement_id) where movement_id is not null;
 
+create or replace function public.reject_financial_link_mutation()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $
+begin
+  raise exception 'Financial evidence associations are append-only' using errcode = '55000';
+end;
+$;
+
+create trigger evidence_financial_links_append_only
+before update or delete on public.evidence_financial_links
+for each row execute function public.reject_financial_link_mutation();
+
 create table public.financial_domain_events (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete restrict,
@@ -255,6 +360,10 @@ create table public.financial_domain_events (
 
 create index financial_domain_events_entity_time_idx
   on public.financial_domain_events(tenant_id, entity_type, entity_id, occurred_at);
+
+create trigger financial_command_idempotency_append_only
+before update or delete on public.financial_command_idempotency
+for each row execute function public.reject_financial_link_mutation();
 
 create table public.financial_command_idempotency (
   tenant_id uuid not null,
