@@ -13,13 +13,21 @@ insert into public.tenant_memberships (id, tenant_id, user_id) values
   ('63000000-0000-0000-0000-000000000001', '62000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'),
   ('63000000-0000-0000-0000-000000000002', '62000000-0000-0000-0000-000000000002', '61000000-0000-0000-0000-000000000002');
 
-insert into public.tenant_currencies (tenant_id, code, name, decimal_places) values
-  ('62000000-0000-0000-0000-000000000001', 'USD', 'US Dollar', 2),
-  ('62000000-0000-0000-0000-000000000001', 'BOB', 'Boliviano', 2),
-  ('62000000-0000-0000-0000-000000000002', 'USD', 'US Dollar', 2);
+insert into public.tenant_currencies (
+  tenant_id, code, name, decimal_places, created_by_membership_id, created_by_user_id
+) values
+  ('62000000-0000-0000-0000-000000000001', 'USD', 'US Dollar', 2, '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'),
+  ('62000000-0000-0000-0000-000000000001', 'BOB', 'Boliviano', 2, '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'),
+  ('62000000-0000-0000-0000-000000000002', 'USD', 'US Dollar', 2, '63000000-0000-0000-0000-000000000002', '61000000-0000-0000-0000-000000000002');
 
-insert into public.tenant_currency_pairs (id, tenant_id, base_currency_code, quote_currency_code) values
-  ('64000000-0000-0000-0000-000000000001', '62000000-0000-0000-0000-000000000001', 'USD', 'BOB');
+insert into public.tenant_currency_pairs (
+  id, tenant_id, base_currency_code, quote_currency_code,
+  created_by_membership_id, created_by_user_id
+) values (
+  '64000000-0000-0000-0000-000000000001',
+  '62000000-0000-0000-0000-000000000001', 'USD', 'BOB',
+  '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
+);
 
 do $$
 begin
@@ -139,6 +147,23 @@ insert into public.financial_operations (
   'USD', 'BOB', 100,
   '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
 );
+
+update public.financial_operations
+set source_effective_at = '2026-11-01T10:45:00Z',
+    applied_rate_id = '65000000-0000-0000-0000-000000000001',
+    applied_rate = 6.90
+where id = '66000000-0000-0000-0000-000000000001';
+
+do $
+begin
+  begin
+    update public.financial_operations set applied_rate = 6.91
+    where id = '66000000-0000-0000-0000-000000000001';
+    raise exception 'Applied operation rate was unexpectedly mutable';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$;
 
 insert into public.external_movements (
   id, tenant_id, currency_code, amount, effective_at,
