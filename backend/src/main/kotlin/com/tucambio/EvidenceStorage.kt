@@ -157,7 +157,7 @@ class PostgresEvidenceRepository private constructor(private val dataSource: Dat
     }
 }
 
-data class SupabaseStorageConfig(val projectUrl: String, val anonKey: String, val serviceRoleKey: String) {
+data class SupabaseStorageConfig(val projectUrl: String, val serviceRoleKey: String) {
     companion object {
         fun fromEnvironment(environment: Map<String, String> = System.getenv()): SupabaseStorageConfig? {
             val url = environment["SUPABASE_URL"]?.trim()?.takeIf(String::isNotEmpty) ?: return null
