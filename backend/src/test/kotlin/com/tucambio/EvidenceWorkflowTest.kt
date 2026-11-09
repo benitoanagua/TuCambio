@@ -30,9 +30,10 @@ class EvidenceWorkflowTest {
 
         val grant = service.createUpload(actor, tenant, "image/png", 8, "validated-user-jwt")
 
-        assertEquals(evidenceId.toString(), grant.evidenceId)
+        assertTrue(runCatching { UUID.fromString(grant.evidenceId) }.isSuccess)
+        assertEquals(repository.lastCreatedId.toString(), grant.evidenceId)
         assertEquals("operation-evidence", grant.bucket)
-        assertEquals(record.objectPath, grant.objectPath)
+        assertEquals("$tenant/${grant.evidenceId}", grant.objectPath)
         assertEquals("PUT", grant.uploadMethod)
         assertEquals("https://storage.example/upload/signed", grant.uploadUrl)
         assertEquals(record.objectPath, storage.lastSignedUploadPath)
@@ -108,6 +109,7 @@ class EvidenceWorkflowTest {
         private val available: Boolean = false
     ) : EvidenceRepository {
         var createdCount = 0
+        var lastCreatedId: UUID? = null
         var wasCompleted = false
         var completedSha256: ByteArray? = null
 
@@ -119,7 +121,13 @@ class EvidenceWorkflowTest {
             expectedSizeBytes: Long
         ): EvidenceRecord {
             createdCount++
-            return record.copy(id = evidenceId, mimeType = mimeType, expectedSizeBytes = expectedSizeBytes)
+            lastCreatedId = evidenceId
+            return record.copy(
+                id = evidenceId,
+                objectPath = "$tenant/$evidenceId",
+                mimeType = mimeType,
+                expectedSizeBytes = expectedSizeBytes
+            )
         }
 
         override fun findPending(actorUserId: UUID, tenantId: UUID, evidenceId: UUID): EvidenceRecord? = record
