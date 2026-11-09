@@ -61,7 +61,7 @@ data class AssociateExternalMovementRequest(
 data class TransitionExternalMovementRequest(val targetStatus: String)
 
 @Serializable
-data class FinancialCommandResponse(val resourceId: String, val replayed: Boolean, val code: String? = null)
+data class FinancialCommandResponse(val resourceId: String, val replayed: Boolean, val code: String? = null, val status: String? = null)
 
 class FinancialCommandValidationException(val errorCode: String) : RuntimeException(errorCode)
 
