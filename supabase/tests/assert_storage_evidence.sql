@@ -138,6 +138,18 @@ select public.complete_tenant_evidence(
   '56000000-0000-0000-0000-000000000001',
   decode(repeat('cd', 32), 'hex')
 );
+do $$
+begin
+  if public.complete_tenant_evidence(
+    '51000000-0000-0000-0000-000000000003',
+    '52000000-0000-0000-0000-000000000001',
+    '56000000-0000-0000-0000-000000000002',
+    decode(repeat('ef', 32), 'hex')
+  ) then
+    raise exception 'Evidence without a Storage object was finalized';
+  end if;
+end;
+$$;
 reset role;
 
 -- Verified evidence is visible to an authorized tenant member only.
@@ -151,14 +163,6 @@ begin
   end if;
   if (select count(*) from storage.objects) <> 1 then
     raise exception 'Tenant A operator cannot read verified evidence object';
-  end if;
-  if public.complete_tenant_evidence(
-    '51000000-0000-0000-0000-000000000003',
-    '52000000-0000-0000-0000-000000000001',
-    '56000000-0000-0000-0000-000000000002',
-    decode(repeat('ef', 32), 'hex')
-  ) then
-    raise exception 'Evidence without a Storage object was finalized';
   end if;
 end;
 $$;
