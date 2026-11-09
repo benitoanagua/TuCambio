@@ -253,7 +253,7 @@ fun Application.module(
 
 private suspend fun ApplicationCall.executeFinancialCommand(
     service: FinancialCommandService,
-    command: (UUID, UUID, String) -> kotlinx.serialization.json.JsonObject
+    command: suspend (UUID, UUID, String) -> kotlinx.serialization.json.JsonObject
 ) {
     val tenantId = parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
     if (tenantId == null) {
