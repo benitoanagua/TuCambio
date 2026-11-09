@@ -39,6 +39,8 @@ begin
      or has_table_privilege('authenticated', 'public.tenant_evidence', 'DELETE')
      or has_table_privilege('authenticated', 'storage.objects', 'UPDATE')
      or has_table_privilege('authenticated', 'storage.objects', 'DELETE')
+     or has_table_privilege('anon', 'storage.objects', 'SELECT')
+     or has_table_privilege('anon', 'storage.objects', 'INSERT')
      or has_function_privilege('authenticated',
        'public.create_tenant_evidence(uuid,uuid,uuid,text,bigint)', 'EXECUTE')
      or has_function_privilege('anon',
@@ -102,7 +104,15 @@ values (
   '{"mimetype":"image/png","size":2048}'::jsonb
 );
 
-do $$
+do $
+begin
+  if (select count(*) from storage.objects) <> 0 then
+    raise exception 'Pending evidence object is readable before backend verification';
+  end if;
+end;
+$;
+
+do $
 begin
   begin
     insert into storage.objects (bucket_id, name, owner_id, metadata)
@@ -141,6 +151,14 @@ begin
   end if;
   if (select count(*) from storage.objects) <> 1 then
     raise exception 'Tenant A operator cannot read verified evidence object';
+  end if;
+  if public.complete_tenant_evidence(
+    '51000000-0000-0000-0000-000000000003',
+    '52000000-0000-0000-0000-000000000001',
+    '56000000-0000-0000-0000-000000000002',
+    decode(repeat('ef', 32), 'hex')
+  ) then
+    raise exception 'Evidence without a Storage object was finalized';
   end if;
 end;
 $$;
