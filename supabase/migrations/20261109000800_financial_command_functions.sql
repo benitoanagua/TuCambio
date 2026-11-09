@@ -11,6 +11,29 @@ alter table public.tenant_currencies
 alter table public.tenant_currencies
   add constraint tenant_currencies_tenant_id_unique unique (tenant_id, id);
 
+create or replace function public.protect_currency_configuration_identity()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $
+begin
+  if tg_table_name = 'tenant_currencies' then
+    if new.id is distinct from old.id
+       or new.tenant_id is distinct from old.tenant_id
+       or new.code is distinct from old.code
+       or new.decimal_places is distinct from old.decimal_places then
+      raise exception 'Currency identity and precision are immutable' using errcode = '55000';
+    end if;
+  elsif new.tenant_id is distinct from old.tenant_id
+     or new.id is distinct from old.id
+     or new.base_currency_code is distinct from old.base_currency_code
+     or new.quote_currency_code is distinct from old.quote_currency_code then
+    raise exception 'Currency pair identity is immutable' using errcode = '55000';
+  end if;
+  return new;
+end;
+$;
+
 alter table public.financial_domain_events
   drop constraint financial_domain_events_entity_type;
 alter table public.financial_domain_events
