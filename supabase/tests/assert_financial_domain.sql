@@ -45,7 +45,7 @@ begin
     raise exception 'Financial domain tables expose direct privileges';
   end if;
 
-  if (select count(*) from public.tenant_currencies where tenant_id = '62000000-0000-0000-0000-000000000001') <> 2 then
+  if (select count(*) from public.tenant_currencies where tenant_id = '62000000-0000-0000-0000-000000000001') <> 3 then
     raise exception 'Tenant currency catalogue not persisted';
   end if;
 
