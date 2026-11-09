@@ -155,8 +155,188 @@ begin
        where o.bucket_id = e.bucket_id
          and o.name = e.object_path
          and o.metadata ->> 'mimetype' = e.mime_type
-         and (o.metadata ->> 'size') ~ '^[0-9]+$'
-         and (o.metadata ->> 'size')::bigint = e.expected_size_bytes
+         and case
+          when (o.metadata ->> 'size') ~ '^[0-9]+
+     );
+
+  get diagnostics updated_count = row_count;
+  return updated_count = 1;
+end;
+$$;
+
+revoke all on function public.create_tenant_evidence(uuid, uuid, uuid, text, bigint)
+  from public, anon, authenticated;
+revoke all on function public.complete_tenant_evidence(uuid, uuid, uuid, bytea)
+  from public, anon, authenticated;
+grant usage on schema public to tucambio_backend;
+grant execute on function public.create_tenant_evidence(uuid, uuid, uuid, text, bigint)
+  to tucambio_backend;
+grant execute on function public.complete_tenant_evidence(uuid, uuid, uuid, bytea)
+  to tucambio_backend;
+
+-- Storage API access is restricted to the one private bucket and to object
+-- paths backed by pending/available metadata for an active tenant membership.
+alter table storage.objects enable row level security;
+revoke all on table storage.objects from public, anon, authenticated;
+grant usage on schema storage to authenticated;
+grant select, insert on table storage.objects to authenticated;
+
+create policy operation_evidence_upload_pending_only
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'operation-evidence'
+    and exists (
+      select 1
+      from public.tenant_evidence e
+      where e.bucket_id = storage.objects.bucket_id
+        and e.object_path = storage.objects.name
+        and e.status = 'pending'
+        and e.created_by_user_id = auth.uid()
+        and public.has_tenant_capability(e.tenant_id, 'operations.operate')
+        and storage.objects.metadata ->> 'mimetype' = e.mime_type
+        and case
+          when (storage.objects.metadata ->> 'size') ~ '^[0-9]+
+    )
+  );
+
+create policy operation_evidence_read_verified_only
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'operation-evidence'
+    and exists (
+      select 1
+      from public.tenant_evidence e
+      where e.bucket_id = storage.objects.bucket_id
+        and e.object_path = storage.objects.name
+        and e.status = 'available'
+        and (
+          public.has_tenant_capability(e.tenant_id, 'operations.operate')
+          or public.has_tenant_capability(e.tenant_id, 'movements.verify')
+          or public.has_tenant_capability(e.tenant_id, 'operations.settle')
+          or public.has_tenant_capability(e.tenant_id, 'tenant.administer')
+        )
+    )
+  );
+
+comment on table public.tenant_evidence is
+  'Private evidence metadata. Object paths are tenant/evidence UUID pairs; upload lifecycle is controlled by backend functions.';
+comment on function public.create_tenant_evidence(uuid, uuid, uuid, text, bigint) is
+  'Backend-only: creates a pending evidence record after checking active membership and operations.operate.';
+comment on function public.complete_tenant_evidence(uuid, uuid, uuid, bytea) is
+  'Backend-only: marks evidence available only when the matching Storage object and declared size/type exist; Ktor must independently verify bytes and SHA-256.';
+
+commit;
+
+            then (o.metadata ->> 'size')::bigint = e.expected_size_bytes
+          else false
+        end
+     );
+
+  get diagnostics updated_count = row_count;
+  return updated_count = 1;
+end;
+$$;
+
+revoke all on function public.create_tenant_evidence(uuid, uuid, uuid, text, bigint)
+  from public, anon, authenticated;
+revoke all on function public.complete_tenant_evidence(uuid, uuid, uuid, bytea)
+  from public, anon, authenticated;
+grant usage on schema public to tucambio_backend;
+grant execute on function public.create_tenant_evidence(uuid, uuid, uuid, text, bigint)
+  to tucambio_backend;
+grant execute on function public.complete_tenant_evidence(uuid, uuid, uuid, bytea)
+  to tucambio_backend;
+
+-- Storage API access is restricted to the one private bucket and to object
+-- paths backed by pending/available metadata for an active tenant membership.
+alter table storage.objects enable row level security;
+revoke all on table storage.objects from public, anon, authenticated;
+grant usage on schema storage to authenticated;
+grant select, insert on table storage.objects to authenticated;
+
+create policy operation_evidence_upload_pending_only
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'operation-evidence'
+    and exists (
+      select 1
+      from public.tenant_evidence e
+      where e.bucket_id = storage.objects.bucket_id
+        and e.object_path = storage.objects.name
+        and e.status = 'pending'
+        and e.created_by_user_id = auth.uid()
+        and public.has_tenant_capability(e.tenant_id, 'operations.operate')
+        and storage.objects.metadata ->> 'mimetype' = e.mime_type
+        and (storage.objects.metadata ->> 'size') ~ '^[0-9]+$'
+        and (storage.objects.metadata ->> 'size')::bigint = e.expected_size_bytes
+    )
+  );
+
+create policy operation_evidence_read_verified_only
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'operation-evidence'
+    and exists (
+      select 1
+      from public.tenant_evidence e
+      where e.bucket_id = storage.objects.bucket_id
+        and e.object_path = storage.objects.name
+        and e.status = 'available'
+        and (
+          public.has_tenant_capability(e.tenant_id, 'operations.operate')
+          or public.has_tenant_capability(e.tenant_id, 'movements.verify')
+          or public.has_tenant_capability(e.tenant_id, 'operations.settle')
+          or public.has_tenant_capability(e.tenant_id, 'tenant.administer')
+        )
+    )
+  );
+
+comment on table public.tenant_evidence is
+  'Private evidence metadata. Object paths are tenant/evidence UUID pairs; upload lifecycle is controlled by backend functions.';
+comment on function public.create_tenant_evidence(uuid, uuid, uuid, text, bigint) is
+  'Backend-only: creates a pending evidence record after checking active membership and operations.operate.';
+comment on function public.complete_tenant_evidence(uuid, uuid, uuid, bytea) is
+  'Backend-only: marks evidence available only when the matching Storage object and declared size/type exist; Ktor must independently verify bytes and SHA-256.';
+
+commit;
+
+            then (storage.objects.metadata ->> 'size')::bigint = e.expected_size_bytes
+          else false
+        end
+    )
+  );
+
+create policy operation_evidence_read_verified_only
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'operation-evidence'
+    and exists (
+      select 1
+      from public.tenant_evidence e
+      where e.bucket_id = storage.objects.bucket_id
+        and e.object_path = storage.objects.name
+        and e.status = 'available'
+        and (
+          public.has_tenant_capability(e.tenant_id, 'operations.operate')
+          or public.has_tenant_capability(e.tenant_id, 'movements.verify')
+          or public.has_tenant_capability(e.tenant_id, 'operations.settle')
+          or public.has_tenant_capability(e.tenant_id, 'tenant.administer')
+        )
+    )
+  );
+
+comment on table public.tenant_evidence is
+  'Private evidence metadata. Object paths are tenant/evidence UUID pairs; upload lifecycle is controlled by backend functions.';
+comment on function public.create_tenant_evidence(uuid, uuid, uuid, text, bigint) is
+  'Backend-only: creates a pending evidence record after checking active membership and operations.operate.';
+comment on function public.complete_tenant_evidence(uuid, uuid, uuid, bytea) is
+  'Backend-only: marks evidence available only when the matching Storage object and declared size/type exist; Ktor must independently verify bytes and SHA-256.';
+
+commit;
+
+            then (o.metadata ->> 'size')::bigint = e.expected_size_bytes
+          else false
+        end
      );
 
   get diagnostics updated_count = row_count;
