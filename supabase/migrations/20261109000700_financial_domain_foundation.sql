@@ -50,6 +50,7 @@ create table public.currency_rates (
   constraint currency_rates_positive check (buy_rate > 0 and sell_rate > 0),
   constraint currency_rates_validity check (valid_until is null or valid_until > valid_from),
   constraint currency_rates_tenant_id_unique unique (tenant_id, id),
+  constraint currency_rates_tenant_pair_id_unique unique (tenant_id, pair_id, id),
   constraint currency_rates_pair_fk foreign key (tenant_id, pair_id)
     references public.tenant_currency_pairs(tenant_id, id) on delete restrict,
   constraint currency_rates_author_fk foreign key (tenant_id, created_by_membership_id, created_by_user_id)
@@ -89,16 +90,52 @@ create table public.financial_operations (
     references public.tenant_currencies(tenant_id, code) on delete restrict,
   constraint financial_operations_author_fk foreign key (tenant_id, created_by_membership_id, created_by_user_id)
     references public.tenant_memberships(tenant_id, id, user_id) on delete restrict,
-  constraint financial_operations_applied_rate_fk foreign key (tenant_id, applied_rate_id)
-    references public.currency_rates(tenant_id, id) on delete restrict,
+  constraint financial_operations_applied_rate_fk foreign key (tenant_id, pair_id, applied_rate_id)
+    references public.currency_rates(tenant_id, pair_id, id) on delete restrict,
   constraint financial_operations_applied_rate_consistency check (
-    (applied_rate_id is null and applied_rate is null and source_effective_at is null)
+    (applied_rate_id is null and applied_rate is null)
     or (applied_rate_id is not null and applied_rate > 0 and source_effective_at is not null)
   )
 );
 
 create index financial_operations_tenant_status_created_idx
   on public.financial_operations(tenant_id, status, created_at desc);
+
+-- New operations must use the exact enabled pair and active tenant currencies.
+create or replace function public.validate_financial_operation_pair()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $
+begin
+  if not exists (
+    select 1
+    from public.tenant_currency_pairs p
+    join public.tenant_currencies base_c
+      on base_c.tenant_id = p.tenant_id and base_c.code = p.base_currency_code
+    join public.tenant_currencies quote_c
+      on quote_c.tenant_id = p.tenant_id and quote_c.code = p.quote_currency_code
+    where p.tenant_id = new.tenant_id
+      and p.id = new.pair_id
+      and p.status = 'enabled'
+      and base_c.status = 'active'
+      and quote_c.status = 'active'
+      and (
+        (new.source_currency_code = p.base_currency_code and new.target_currency_code = p.quote_currency_code)
+        or
+        (new.source_currency_code = p.quote_currency_code and new.target_currency_code = p.base_currency_code)
+      )
+  ) then
+    raise exception 'Operation currencies must match an enabled tenant pair'
+      using errcode = '23514';
+  end if;
+  return new;
+end;
+$;
+
+create trigger financial_operations_pair_validation
+before insert on public.financial_operations
+for each row execute function public.validate_financial_operation_pair();
 
 create table public.external_movements (
   id uuid primary key default gen_random_uuid(),
@@ -126,6 +163,27 @@ create table public.external_movements (
 
 create index external_movements_tenant_effective_idx
   on public.external_movements(tenant_id, effective_at desc);
+
+-- A confirmed external fact is immutable; corrections are separate records/events.
+create or replace function public.protect_confirmed_external_movement()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $
+begin
+  if old.status = 'CONFIRMED' then
+    raise exception 'A confirmed external movement is immutable' using errcode = '55000';
+  end if;
+  if tg_op = 'DELETE' then
+    raise exception 'External movement history is retained' using errcode = '55000';
+  end if;
+  return new;
+end;
+$;
+
+create trigger external_movements_confirmed_immutable
+before update or delete on public.external_movements
+for each row execute function public.protect_confirmed_external_movement();
 
 create table public.operation_movements (
   tenant_id uuid not null,
@@ -158,9 +216,6 @@ create table public.evidence_financial_links (
     (operation_id is not null and movement_id is null)
     or (operation_id is null and movement_id is not null)
   ),
-  constraint evidence_financial_links_pk primary key (
-    tenant_id, evidence_id, operation_id, movement_id
-  ),
   constraint evidence_financial_links_evidence_fk foreign key (tenant_id, evidence_id)
     references public.tenant_evidence(tenant_id, id) on delete restrict,
   constraint evidence_financial_links_operation_fk foreign key (tenant_id, operation_id)
@@ -171,6 +226,10 @@ create table public.evidence_financial_links (
     references public.tenant_memberships(tenant_id, id, user_id) on delete restrict
 );
 
+create unique index evidence_financial_links_operation_unique
+  on public.evidence_financial_links(tenant_id, evidence_id, operation_id) where operation_id is not null;
+create unique index evidence_financial_links_movement_unique
+  on public.evidence_financial_links(tenant_id, evidence_id, movement_id) where movement_id is not null;
 create index evidence_financial_links_operation_idx
   on public.evidence_financial_links(tenant_id, operation_id) where operation_id is not null;
 create index evidence_financial_links_movement_idx
