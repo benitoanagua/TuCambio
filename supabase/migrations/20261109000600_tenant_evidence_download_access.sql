@@ -61,7 +61,7 @@ language sql
 stable
 security definer
 set search_path = pg_catalog, public
-as $
+as $$
   select e.id, e.bucket_id, e.object_path, e.mime_type, e.expected_size_bytes
   from public.tenant_evidence e
   join public.tenants t on t.id = e.tenant_id and t.status = 'active'
@@ -79,7 +79,7 @@ as $
     and e.status = 'pending'
     and trc.capability_code = 'operations.operate'
   limit 1;
-$;
+$$;
 
 revoke all on function public.get_pending_tenant_evidence_for_upload(uuid, uuid, uuid)
   from public, anon, authenticated;
