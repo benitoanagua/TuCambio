@@ -190,6 +190,34 @@ class SupabaseJwtAuthenticationTest {
         }
     }
 
+    @Test
+    fun tenantAuthorizationUsesTheAuthenticatedActorAndActiveMembership() = testApplication {
+        val actorId = UUID.randomUUID()
+        val tenantId = UUID.randomUUID()
+        val membershipId = UUID.randomUUID()
+        val repository = object : TenantAccessRepository {
+            override fun resolve(actorUserId: UUID, requestedTenantId: UUID): TenantAccess? {
+                assertEquals(actorId, actorUserId)
+                if (requestedTenantId != tenantId) return null
+                return TenantAccess(tenantId, membershipId, setOf("operations.operate"))
+            }
+        }
+        application { module(config, repository) }
+
+        val allowed = client.get("/api/v1/tenants/$tenantId/authorization") {
+            header(HttpHeaders.Authorization, "Bearer ${token(subject = actorId.toString())}")
+        }
+        assertEquals(HttpStatusCode.OK, allowed.status)
+        assertTrue(allowed.bodyAsText().contains("operations.operate"))
+        assertTrue(allowed.bodyAsText().contains(membershipId.toString()))
+
+        val denied = client.get("/api/v1/tenants/${UUID.randomUUID()}/authorization") {
+            header(HttpHeaders.Authorization, "Bearer ${token(subject = actorId.toString())}")
+        }
+        assertEquals(HttpStatusCode.Forbidden, denied.status)
+        assertTrue(denied.bodyAsText().contains("tenant_access_denied"))
+    }
+
     private fun token(
         key: KeyPair = keyPair,
         subject: String? = UUID.randomUUID().toString(),

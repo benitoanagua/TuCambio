@@ -16,85 +16,84 @@ import io.ktor.server.routing.routing
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.sql.SQLException
+import java.util.UUID
 
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     require(port in 1..65535) { "PORT must be between 1 and 65535" }
-
-    embeddedServer(
-        factory = Netty,
-        host = "0.0.0.0",
-        port = port,
-        module = { module() }
-    ).start(wait = true)
+    embeddedServer(factory = Netty, host = "0.0.0.0", port = port, module = { module() }).start(wait = true)
 }
 
-fun Application.module(authConfig: SupabaseAuthConfig? = SupabaseAuthConfig.fromEnvironment()) {
+fun Application.module(
+    authConfig: SupabaseAuthConfig? = SupabaseAuthConfig.fromEnvironment(),
+    tenantAccessRepository: TenantAccessRepository? = null
+) {
     install(CallLogging)
     authConfig?.let(::installSupabaseJwtAuthentication)
+    val effectiveRepository = tenantAccessRepository
+        ?: if (authConfig != null) PostgresTenantAccessRepository.fromEnvironment() else null
+    val authorization = effectiveRepository?.let(::TenantAuthorizationService)
+    manageTenantAccessRepository(effectiveRepository)
+
     install(ContentNegotiation) {
-        json(
-            Json {
-                explicitNulls = false
-                ignoreUnknownKeys = true
-            }
-        )
+        json(Json { explicitNulls = false; ignoreUnknownKeys = true })
     }
 
     routing {
-        get("/") {
-            call.respond(
-                ServiceInfo(
-                    service = "tucambio-api",
-                    status = "ok"
-                )
-            )
-        }
-
-        get("/health/live") {
-            call.respond(HealthResponse(status = "ok"))
-        }
-
-        // Until external dependencies are wired, readiness means the HTTP process is initialized.
-        get("/health/ready") {
-            call.respond(HealthResponse(status = "ready"))
-        }
+        get("/") { call.respond(ServiceInfo("tucambio-api", "ok")) }
+        get("/health/live") { call.respond(HealthResponse("ok")) }
+        get("/health/ready") { call.respond(HealthResponse("ready")) }
 
         if (authConfig == null) {
             get("/api/v1/me") {
-                call.respond(
-                    HttpStatusCode.ServiceUnavailable,
-                    ErrorResponse(error = "authentication_not_configured")
-                )
+                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
+            }
+            get("/api/v1/tenants/{tenantId}/authorization") {
+                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
             }
         } else {
             authenticate("supabase") {
                 get("/api/v1/me") {
                     val principal = call.principal<JWTPrincipal>()
-                    call.respond(ActorResponse(userId = requireNotNull(principal).payload.subject))
+                    call.respond(ActorResponse(requireNotNull(principal).payload.subject))
+                }
+                get("/api/v1/tenants/{tenantId}/authorization") {
+                    val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
+                    val tenantId = call.parameters["tenantId"]
+                        ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    if (tenantId == null) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_tenant_id"))
+                    } else if (authorization == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("database_not_configured"))
+                    } else {
+                        try {
+                            val access = authorization.resolve(actorId, tenantId)
+                            if (access == null) {
+                                call.respond(HttpStatusCode.Forbidden, ErrorResponse("tenant_access_denied"))
+                            } else {
+                                call.respond(TenantAuthorizationResponse(
+                                    access.tenantId.toString(),
+                                    access.membershipId.toString(),
+                                    access.capabilities.sorted()
+                                ))
+                            }
+                        } catch (_: SQLException) {
+                            call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authorization_unavailable"))
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-@Serializable
-data class ServiceInfo(
-    val service: String,
-    val status: String
+@Serializable data class ServiceInfo(val service: String, val status: String)
+@Serializable data class HealthResponse(val status: String)
+@Serializable data class ActorResponse(val userId: String)
+@Serializable data class TenantAuthorizationResponse(
+    val tenantId: String,
+    val membershipId: String,
+    val capabilities: List<String>
 )
-
-@Serializable
-data class HealthResponse(
-    val status: String
-)
-
-@Serializable
-data class ActorResponse(
-    val userId: String
-)
-
-@Serializable
-data class ErrorResponse(
-    val error: String
-)
+@Serializable data class ErrorResponse(val error: String)

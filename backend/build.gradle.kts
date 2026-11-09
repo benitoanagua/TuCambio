@@ -9,9 +9,7 @@ version = "0.1.0-SNAPSHOT"
 
 val ktorVersion = "3.6.1"
 
-repositories {
-    mavenCentral()
-}
+repositories { mavenCentral() }
 
 dependencies {
     implementation("io.ktor:ktor-server-core-jvm:$ktorVersion")
@@ -20,22 +18,15 @@ dependencies {
     implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktorVersion")
     implementation("io.ktor:ktor-server-call-logging-jvm:$ktorVersion")
+    implementation("com.zaxxer:HikariCP:6.3.3")
+    runtimeOnly("org.postgresql:postgresql:42.7.7")
     implementation("ch.qos.logback:logback-classic:1.5.25")
-
     testImplementation(kotlin("test-junit5"))
     testImplementation("io.ktor:ktor-server-test-host-jvm:$ktorVersion")
     testImplementation("com.auth0:java-jwt:4.5.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.13.4")
 }
 
-kotlin {
-    jvmToolchain(21)
-}
-
-application {
-    mainClass.set("com.tucambio.ApplicationKt")
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
+kotlin { jvmToolchain(21) }
+application { mainClass.set("com.tucambio.ApplicationKt") }
+tasks.test { useJUnitPlatform() }
