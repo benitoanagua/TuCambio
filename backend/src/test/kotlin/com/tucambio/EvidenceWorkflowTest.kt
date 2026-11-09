@@ -23,7 +23,7 @@ class EvidenceWorkflowTest {
     )
 
     @Test
-    fun uploadGrantUsesBackendCreatedPathAndActorToken() {
+    fun uploadGrantUsesBackendCreatedPathAndServerSigning() {
         val repository = FakeEvidenceRepository(record)
         val storage = FakeEvidenceStorage()
         val service = EvidenceWorkflowService(repository, storage)
@@ -36,7 +36,7 @@ class EvidenceWorkflowTest {
         assertEquals("$tenant/${grant.evidenceId}", grant.objectPath)
         assertEquals("PUT", grant.uploadMethod)
         assertEquals("https://storage.example/upload/signed", grant.uploadUrl)
-        assertEquals(record.objectPath, storage.lastSignedUploadPath)
+        assertEquals(grant.objectPath, storage.lastSignedUploadPath)
     }
 
     @Test
