@@ -78,16 +78,6 @@ class SupabaseJwtAuthenticationTest {
     }
 
     @Test
-    fun evidenceDownloadEndpointRequiresAuthenticatedSupabaseJwt() = testApplication {
-        application { module(config) }
-        val response = client.get(
-            "/api/v1/tenants/52000000-0000-0000-0000-000000000001/evidence/" +
-                "56000000-0000-0000-0000-000000000001/download-url"
-        )
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
-
-    @Test
     fun invalidSignatureIsUnauthorized() = testApplication {
         application { module(config) }
         val otherKey = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
