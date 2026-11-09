@@ -156,6 +156,7 @@ class PostgresFinancialCommandRepository private constructor(private val dataSou
                     "select public.command_create_currency_rate(?, ?, ?, ?, ?, ?, ?, ?, ?)" -> 8
                     "select public.command_create_financial_operation(?, ?, ?, ?, ?, ?, ?, ?)" -> 7
                     "select public.command_create_external_movement(?, ?, ?, ?, ?, ?, ?, ?, ?)" -> 8
+                    "select public.command_apply_operation_rate(?, ?, ?, ?, ?)" -> 4
                     else -> 5
                 }
                 statement.setString(last, key)
