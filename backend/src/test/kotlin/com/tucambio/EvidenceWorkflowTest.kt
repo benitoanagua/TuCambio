@@ -35,6 +35,8 @@ class EvidenceWorkflowTest {
         assertEquals("operation-evidence", grant.bucket)
         assertEquals("$tenant/${grant.evidenceId}", grant.objectPath)
         assertEquals("PUT", grant.uploadMethod)
+        assertEquals("image/png", grant.contentType)
+        assertEquals(8, grant.maxSizeBytes)
         assertEquals("https://storage.example/upload/signed", grant.uploadUrl)
         assertEquals(grant.objectPath, storage.lastSignedUploadPath)
     }
