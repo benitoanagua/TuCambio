@@ -28,7 +28,9 @@ insert into public.membership_roles (tenant_id, membership_id, role_id) values
    '6a000000-0000-0000-0000-000000000001',
    '6b000000-0000-0000-0000-000000000001');
 
-do $$
+set local role tucambio_backend;
+
+do $
 declare
   v_first jsonb;
   v_replay jsonb;
@@ -53,8 +55,6 @@ begin
        'public.command_create_financial_operation(uuid,uuid,uuid,text,text,numeric,text,bytea)', 'EXECUTE') then
     raise exception 'Backend role must be able to execute financial commands';
   end if;
-
-  execute 'set local role tucambio_backend';
 
   v_usd := public.command_create_tenant_currency(
     '68000000-0000-0000-0000-000000000001', '69000000-0000-0000-0000-000000000001',
@@ -110,9 +110,14 @@ begin
   exception when insufficient_privilege then v_tenant_b_denied := true;
   end;
 
-  execute 'reset role';
-
   if not v_tenant_b_denied then raise exception 'Cross-tenant command was not denied'; end if;
+end;
+$;
+
+reset role;
+
+do $
+begin
   if (select count(*) from public.tenant_currencies
       where tenant_id = '69000000-0000-0000-0000-000000000001') <> 2 then
     raise exception 'Unexpected currency command result count';
@@ -130,10 +135,10 @@ begin
     raise exception 'Movement association command did not persist';
   end if;
   if (select count(*) from public.financial_domain_events
-      where tenant_id = '69000000-0000-0000-0000-000000000001') <> 6 then
+      where tenant_id = '69000000-0000-0000-0000-000000000001') <> 7 then
     raise exception 'Each successful financial command must append one domain event';
   end if;
 end;
-$$;
+$;
 
 rollback;
