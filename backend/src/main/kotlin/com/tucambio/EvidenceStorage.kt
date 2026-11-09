@@ -253,7 +253,7 @@ class SupabaseEvidenceObjectStorage(
         val result = if (signedUrl.startsWith("https://") || signedUrl.startsWith("http://")) {
             URI.create(signedUrl)
         } else {
-            val suffix = if (signedUrl.startsWith("/storage/v1/")) signedUrl else "/storage/v1/$${signedUrl.trimStart('/')}"
+            val suffix = if (signedUrl.startsWith("/storage/v1/")) signedUrl else "/storage/v1/${signedUrl.trimStart('/')}"
             URI.create("${config.projectUrl}$suffix")
         }
         require(result.scheme == project.scheme && result.authority == project.authority) {
