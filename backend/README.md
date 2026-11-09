@@ -68,7 +68,7 @@ CI valida migraciones en PostgreSQL 17, ejecuta pruebas Kotlin y construye la im
 ## Evidencias privadas (M1.6)
 
 1. El cliente autenticado solicita `POST /api/v1/tenants/{tenantId}/evidence` con `mimeType` y `sizeBytes`. Ktor valida el JWT, y PostgreSQL crea una fila pending únicamente si el actor tiene membresía activa y `operations.operate`.
-2. Ktor firma una URL de carga para la ruta determinista `{tenantId}/{evidenceId}`. La URL es un bearer token temporal y debe usarse inmediatamente; el cliente no elige bucket, ruta ni puede sobrescribir.
+2. Ktor firma una URL de carga para la ruta determinista `{tenantId}/{evidenceId}`. La respuesta incluye `uploadMethod=PUT`, `contentType` y `maxSizeBytes`; el cliente debe enviar el MIME indicado en `Content-Type` y respetar el límite. La URL es un bearer token temporal y debe usarse inmediatamente; el cliente no elige bucket, ruta ni puede sobrescribir.
 3. El cliente hace PUT del binario a esa URL. El bucket privado impone 10 MiB y PDF/JPEG/PNG/WebP.
 4. El cliente llama a `POST .../{evidenceId}/complete`. Ktor recupera el objeto con credenciales de servidor, limita la lectura, comprueba tamaño y firma binaria MIME y calcula SHA-256. Solo entonces llama a la función backend-only que marca la evidencia available.
 5. La descarga requiere `GET .../{evidenceId}/download-url`; PostgreSQL vuelve a comprobar tenant, membresía y capacidad, y Ktor emite una URL firmada de 60 segundos.
