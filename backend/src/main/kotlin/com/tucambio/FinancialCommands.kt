@@ -58,7 +58,10 @@ data class AssociateExternalMovementRequest(
 )
 
 @Serializable
-data class FinancialCommandResponse(val resourceId: String, val replayed: Boolean, val code: String? = null)
+data class TransitionExternalMovementRequest(val targetStatus: String)
+
+@Serializable
+data class FinancialCommandResponse(val resourceId: String, val replayed: Boolean, val code: String? = null, val status: String? = null)
 
 class FinancialCommandValidationException(val errorCode: String) : RuntimeException(errorCode)
 
@@ -69,6 +72,7 @@ interface FinancialCommandRepository : AutoCloseable {
     fun createOperation(actorId: UUID, tenantId: UUID, request: CreateFinancialOperationRequest, key: String, hash: ByteArray): JsonObject
     fun createMovement(actorId: UUID, tenantId: UUID, request: CreateExternalMovementRequest, key: String, hash: ByteArray): JsonObject
     fun associateMovement(actorId: UUID, tenantId: UUID, request: AssociateExternalMovementRequest, key: String, hash: ByteArray): JsonObject
+    fun transitionMovement(actorId: UUID, tenantId: UUID, movementId: String, request: TransitionExternalMovementRequest, key: String, hash: ByteArray): JsonObject
     override fun close() {}
 }
 
@@ -119,6 +123,12 @@ class PostgresFinancialCommandRepository private constructor(private val dataSou
             setObject(3, uuid(request.operationId))
             setObject(4, uuid(request.movementId))
             setString(5, request.movementRole)
+        }
+
+    override fun transitionMovement(actorId: UUID, tenantId: UUID, movementId: String, request: TransitionExternalMovementRequest, key: String, hash: ByteArray) =
+        execute("select public.command_transition_external_movement(?, ?, ?, ?, ?, ?)", actorId, tenantId, key, hash) {
+            setObject(3, uuid(movementId))
+            setString(4, request.targetStatus)
         }
 
     private fun execute(
@@ -216,6 +226,9 @@ class FinancialCommandService(private val repository: FinancialCommandRepository
 
     fun associateMovement(actor: UUID, tenant: UUID, request: AssociateExternalMovementRequest, key: String) =
         repository.associateMovement(actor, tenant, request, key, hash(request))
+
+    fun transitionMovement(actor: UUID, tenant: UUID, movementId: String, request: TransitionExternalMovementRequest, key: String) =
+        repository.transitionMovement(actor, tenant, movementId, request, key, hash(mapOf("movementId" to movementId, "targetStatus" to request.targetStatus)))
 
     private inline fun <reified T> hash(request: T): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(json.encodeToString(request).toByteArray(StandardCharsets.UTF_8))

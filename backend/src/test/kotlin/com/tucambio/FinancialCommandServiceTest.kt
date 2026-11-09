@@ -57,5 +57,6 @@ class FinancialCommandServiceTest {
         override fun createOperation(actorId: UUID, tenantId: UUID, request: CreateFinancialOperationRequest, key: String, hash: ByteArray) = capture(key, hash)
         override fun createMovement(actorId: UUID, tenantId: UUID, request: CreateExternalMovementRequest, key: String, hash: ByteArray) = capture(key, hash)
         override fun associateMovement(actorId: UUID, tenantId: UUID, request: AssociateExternalMovementRequest, key: String, hash: ByteArray) = capture(key, hash)
+        override fun transitionMovement(actorId: UUID, tenantId: UUID, movementId: String, request: TransitionExternalMovementRequest, key: String, hash: ByteArray) = capture(key, hash)
     }
 }
