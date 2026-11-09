@@ -56,6 +56,12 @@ fun Application.module(
     val evidenceWorkflow = if (effectiveEvidenceRepository != null && effectiveEvidenceStorage != null) {
         EvidenceWorkflowService(effectiveEvidenceRepository, effectiveEvidenceStorage)
     } else null
+    val effectiveFinancialCommandRepository = financialCommandRepository
+        ?: if (authConfig != null) PostgresFinancialCommandRepository.fromEnvironment() else null
+    val financialCommands = effectiveFinancialCommandRepository?.let(::FinancialCommandService)
+    if (effectiveFinancialCommandRepository != null && financialCommandRepository == null) {
+        monitor.subscribe(ApplicationStopped) { effectiveFinancialCommandRepository.close() }
+    }
 
     install(ContentNegotiation) {
         json(Json { explicitNulls = false; ignoreUnknownKeys = true })
