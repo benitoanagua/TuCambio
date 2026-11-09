@@ -213,7 +213,7 @@ class SupabaseEvidenceObjectStorage(
             HttpRequest.newBuilder(storageUri("/object/$EVIDENCE_BUCKET/$objectPath"))
                 .timeout(Duration.ofSeconds(10))
                 .header("apikey", config.serviceRoleKey)
-                .header("Authorization", "Bearer $${config.serviceRoleKey}")
+                .header("Authorization", "Bearer ${config.serviceRoleKey}")
                 .GET()
                 .build(),
             HttpResponse.BodyHandlers.ofInputStream()
@@ -237,7 +237,7 @@ class SupabaseEvidenceObjectStorage(
             HttpRequest.newBuilder(storageUri("/object/sign/$EVIDENCE_BUCKET/$objectPath"))
                 .timeout(Duration.ofSeconds(5))
                 .header("apikey", config.serviceRoleKey)
-                .header("Authorization", "Bearer $${config.serviceRoleKey}")
+                .header("Authorization", "Bearer ${config.serviceRoleKey}")
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build()
