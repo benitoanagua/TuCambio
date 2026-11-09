@@ -158,3 +158,94 @@ El dominio no debe depender de Firebase, Ktor, Android, FCM, Compose ni un prove
 ## 8. Observación de estado
 
 Este documento es el mapa inicial de migración basado en el inventario y contratos visibles. No afirma que se hayan copiado o ejecutado módulos de Tu-Pago-App. Antes de trasladar código fuente, cada archivo debe pasar revisión de dependencias, sensibilidad, licencia, nombres, supuestos monetarios y cobertura de pruebas.
+
+## 9. Decisión tecnológica: PostgreSQL administrado por Supabase (ADR-TC-001)
+
+**Estado:** Decisión arquitectónica adoptada para el diseño destino.  
+**Fecha:** 2026-11-09  
+**Decisión:** Firebase deja de ser la plataforma de persistencia/backend de TuCambio. La fuente de verdad transaccional será PostgreSQL, operado mediante Supabase. Se conserva Kotlin/Ktor como backend de aplicación cuando corresponda; Supabase no obliga a trasladar la lógica de dominio a JavaScript ni a exponer escrituras financieras desde el cliente.
+
+### 9.1 Motivo
+
+TuCambio administra cotizaciones, operaciones de compra/venta, movimientos de dinero, saldos, conciliaciones y auditoría. Estas entidades requieren integridad referencial, restricciones consistentes, aislamiento de concurrencia y transacciones ACID en una única base relacional.
+
+Firebase/Firestore no ofrece el mismo modelo relacional/transaccional de PostgreSQL para este dominio. Supabase proporciona PostgreSQL real, con transacciones, constraints, claves foráneas, índices, SQL y mecanismos de control de acceso a nivel de fila. La decisión prioriza la base de datos transaccional como núcleo del sistema, no una base documental NoSQL.
+
+### 9.2 Componentes destino
+
+| Necesidad | Tecnología / responsabilidad |
+|---|---|
+| Persistencia principal | Supabase PostgreSQL. Fuente de verdad de todo dato financiero y operativo. |
+| Autenticación | Supabase Auth como proveedor de identidad, integrado con el backend. |
+| API de negocio | Kotlin/Ktor como capa de aplicación y autorización de casos de uso; no duplicar reglas críticas en clientes. |
+| Acceso SQL | Backend confiable conectado a PostgreSQL mediante JDBC/driver PostgreSQL y pool de conexiones. |
+| Archivos y comprobantes | Supabase Storage en buckets privados; PostgreSQL guarda metadatos, hash, propietario, relación y estado. |
+| Cambios en vivo | Supabase Realtime solo para notificaciones/actualización de vistas, nunca como mecanismo de consistencia financiera. |
+| Tareas asíncronas | Worker/backend y patrón transactional outbox en PostgreSQL. |
+| Migraciones | Migraciones SQL versionadas en Git, revisadas en PR y aplicadas de forma reproducible. |
+| Observabilidad | Logs estructurados, métricas, trazas, auditoría de negocio y alertas operativas. |
+
+### 9.3 Límites ACID y regla de oro
+
+ACID aplica a transacciones ejecutadas dentro de PostgreSQL. No se debe afirmar que una operación distribuida entre PostgreSQL, Storage, Auth, correo, push o servicios externos sea una sola transacción ACID.
+
+- Todo cambio que afecte operación, movimiento, saldo, cotización aplicada, conciliación o auditoría debe persistirse en una transacción PostgreSQL.
+- Las invariantes críticas deben reforzarse en la base de datos con foreign keys, unique constraints, check constraints, índices y, cuando proceda, funciones SQL/PLpgSQL.
+- Las escrituras que cambien varias tablas financieras deben ocurrir en una única transacción; preferir una función/caso de uso del backend que delimite explícitamente esa transacción.
+- No implementar secuencias críticas como varias llamadas HTTP independientes desde el cliente.
+- El saldo no debe ser un número editable sin trazabilidad: definir libro de movimientos inmutable y estrategia transaccional para proyecciones/saldos.
+- Usar idempotency keys con restricciones únicas para comandos reintentables.
+- Aplicar bloqueos/aislamiento adecuados ante concurrencia; documentar y probar los niveles de aislamiento y los conflictos esperados.
+- Auditoría y outbox deben escribirse en la misma transacción que el cambio de negocio que describen.
+- Para efectos externos, usar outbox + reintentos idempotentes/saga y estados explícitos; nunca simular atomicidad entre sistemas.
+
+### 9.4 Seguridad y multi-tenancy
+
+- Toda tabla de negocio que pertenezca a un operador/organización debe incluir tenant_id (o clave equivalente) y claves/relaciones que impidan referencias cruzadas entre tenants.
+- Activar RLS en todas las tablas expuestas por Data API; las políticas deben denegar por defecto y filtrar por tenant y pertenencia/rol.
+- El backend no debe confiar en un tenant_id enviado libremente por el cliente: debe derivarlo de la identidad y membresía autenticadas.
+- El cliente móvil/web nunca recibe la service_role key ni credenciales de PostgreSQL.
+- Las escrituras financieras se canalizan por casos de uso autorizados del backend. No conceder DML directo indiscriminado a clientes.
+- RLS es defensa en profundidad, no reemplazo de autorización de negocio ni de constraints.
+- Storage usa buckets privados y políticas de acceso por tenant; las rutas y metadatos se validan desde backend.
+- Separar roles de migración, runtime y administración; runtime con privilegio mínimo.
+- Probar explícitamente que un usuario de un tenant no puede leer, modificar, relacionar ni descargar datos de otro tenant.
+
+### 9.5 Conectividad y operación
+
+- Para un backend persistente Kotlin/Ktor, preferir conexión PostgreSQL directa cuando la red del despliegue soporte IPv6; si no, usar Supavisor en modo sesión.
+- Reservar el pooler en modo transacción para cargas serverless/funciones de corta duración y verificar las limitaciones del driver (por ejemplo, prepared statements y estado de sesión).
+- Ejecutar migraciones y tareas administrativas con conexión directa, no a través del pooler transaccional.
+- Exigir TLS/SSL, límites de pool explícitos, timeouts y manejo de fallos/reintentos.
+- Configurar backups y probar restauraciones. La recuperación point-in-time y retención dependen del plan contratado; verificarlo antes de producción.
+- Los objetos de Storage requieren estrategia de backup independiente: no asumir que el backup de PostgreSQL incluye los archivos.
+- Separar proyectos/entornos dev, staging y producción. Ningún secreto ni dato real de Tu-Pago-App se reutiliza.
+
+### 9.6 Consecuencias y trabajo requerido
+
+1. Retirar Firebase/Firestore como persistencia del dominio de TuCambio; no migrar sus colecciones como modelo final.
+2. Diseñar primero el esquema relacional y sus invariantes a partir de la especificación de TuCambio.
+3. Crear migraciones SQL desde cero, con datos de prueba sintéticos.
+4. Mantener Auth, Storage y Realtime como servicios auxiliares de Supabase, no como fuente de verdad financiera.
+5. Definir contratos Kotlin para repositorios y transacciones; mantener el dominio independiente del SDK de Supabase.
+6. Implementar pruebas de integración reales contra PostgreSQL para atomicidad, rollback, restricciones, idempotencia, concurrencia y aislamiento multi-tenant.
+7. Añadir pruebas de políticas RLS y Storage antes de habilitar acceso de clientes.
+8. Documentar RPO/RTO, backups, restore drill, rotación de secretos y plan de recuperación.
+
+### 9.7 Criterios de aceptación tecnológicos
+
+- Una operación completa con sus movimientos y auditoría se confirma o revierte como unidad PostgreSQL.
+- No se producen saldos negativos/duplicados ni movimientos duplicados bajo reintentos o concurrencia, salvo que una política explícita lo permita.
+- Las restricciones críticas viven en PostgreSQL, no solo en validaciones de UI.
+- El aislamiento entre tenants está probado en backend, SQL/RLS y Storage.
+- No hay claves administrativas ni credenciales de base de datos en el cliente.
+- Las migraciones reconstruyen el esquema desde una base vacía y se pueden aplicar en CI.
+- Se ha probado backup y restauración de base de datos y se documentó la estrategia separada de archivos.
+- Realtime y notificaciones pueden fallar temporalmente sin dejar inconsistentes las operaciones financieras.
+
+### 9.8 Referencias oficiales
+
+- Supabase Database overview: https://supabase.com/docs/guides/database/overview
+- Connecting to Postgres (direct connection y poolers): https://supabase.com/docs/guides/database/connecting-to-postgres
+- Securing your data / RLS: https://supabase.com/docs/guides/database/secure-data
+- Connection pooling and limits: https://supabase.com/docs/guides/database/connecting-to-postgres/connection-pooling
