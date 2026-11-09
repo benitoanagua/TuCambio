@@ -58,13 +58,13 @@ begin
 
   v_usd := public.command_create_tenant_currency(
     '68000000-0000-0000-0000-000000000001', '69000000-0000-0000-0000-000000000001',
-    'USD', 'US Dollar', 2, 'currency-usd-1', decode(repeat('01', 32), 'hex'));
+    'USD', 'US Dollar', 2::smallint, 'currency-usd-1', decode(repeat('01', 32), 'hex'));
   v_first := public.command_create_tenant_currency(
     '68000000-0000-0000-0000-000000000001', '69000000-0000-0000-0000-000000000001',
-    'BOB', 'Boliviano', 2, 'currency-bob-1', decode(repeat('02', 32), 'hex'));
+    'BOB', 'Boliviano', 2::smallint, 'currency-bob-1', decode(repeat('02', 32), 'hex'));
   v_replay := public.command_create_tenant_currency(
     '68000000-0000-0000-0000-000000000001', '69000000-0000-0000-0000-000000000001',
-    'BOB', 'Boliviano', 2, 'currency-bob-1', decode(repeat('02', 32), 'hex'));
+    'BOB', 'Boliviano', 2::smallint, 'currency-bob-1', decode(repeat('02', 32), 'hex'));
   if (v_first->>'resourceId') <> (v_replay->>'resourceId') or (v_replay->>'replayed') <> 'true' then
     raise exception 'Same idempotency key must return the original resource';
   end if;
@@ -72,7 +72,7 @@ begin
   begin
     perform public.command_create_tenant_currency(
       '68000000-0000-0000-0000-000000000001', '69000000-0000-0000-0000-000000000001',
-      'BOB', 'Boliviano', 2, 'currency-bob-1', decode(repeat('03', 32), 'hex'));
+      'BOB', 'Boliviano', 2::smallint, 'currency-bob-1', decode(repeat('03', 32), 'hex'));
     raise exception 'Changed payload with same idempotency key unexpectedly accepted';
   exception when unique_violation then v_conflict := true;
   end;
@@ -105,7 +105,7 @@ begin
   begin
     perform public.command_create_tenant_currency(
       '68000000-0000-0000-0000-000000000002', '69000000-0000-0000-0000-000000000001',
-      'EUR', 'Euro', 2, 'cross-tenant-1', decode(repeat('09', 32), 'hex'));
+      'EUR', 'Euro', 2::smallint, 'cross-tenant-1', decode(repeat('09', 32), 'hex'));
     raise exception 'Cross-tenant actor unexpectedly created currency';
   exception when insufficient_privilege then v_tenant_b_denied := true;
   end;
