@@ -93,6 +93,7 @@ fun Application.module(
             post("/api/v1/tenants/{tenantId}/operations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             post("/api/v1/tenants/{tenantId}/movements") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             post("/api/v1/tenants/{tenantId}/movement-associations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
         } else {
             authenticate("supabase") {
                 get("/api/v1/me") {
@@ -214,6 +215,18 @@ fun Application.module(
                         financialCommands.associateMovement(actor, tenant, call.receive<AssociateExternalMovementRequest>(), key)
                     }
                 }
+                post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") {
+                    val movementId = call.parameters["movementId"]
+                    if (movementId == null || runCatching { UUID.fromString(movementId) }.isFailure) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_movement_id"))
+                    } else if (financialCommands == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    } else {
+                        call.executeFinancialCommand { actor, tenant, key ->
+                            financialCommands.transitionMovement(actor, tenant, movementId, call.receive<TransitionExternalMovementRequest>(), key)
+                        }
+                    }
+                }
                 get("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/download-url") {
                     val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
                     val tenantId = call.parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
@@ -284,8 +297,9 @@ private suspend fun ApplicationCall.executeFinancialCommand(
             respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_command_invalid_response"))
         } else {
             val code = result["code"]?.jsonPrimitive?.content
+            val status = result["status"]?.jsonPrimitive?.content
             respond(if (replayed) HttpStatusCode.OK else HttpStatusCode.Created,
-                FinancialCommandResponse(resourceId, replayed, code))
+                FinancialCommandResponse(resourceId, replayed, code, status))
         }
     } catch (e: FinancialCommandValidationException) {
         respond(HttpStatusCode.BadRequest, ErrorResponse(e.errorCode))
