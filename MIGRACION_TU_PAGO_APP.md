@@ -169,7 +169,7 @@ Este documento es el mapa inicial de migración basado en el inventario y contra
 
 TuCambio administra cotizaciones, operaciones de compra/venta, movimientos de dinero, saldos, conciliaciones y auditoría. Estas entidades requieren integridad referencial, restricciones consistentes, aislamiento de concurrencia y transacciones ACID en una única base relacional.
 
-Firebase/Firestore no ofrece el mismo modelo relacional/transaccional de PostgreSQL para este dominio. Supabase proporciona PostgreSQL real, con transacciones, constraints, claves foráneas, índices, SQL y mecanismos de control de acceso a nivel de fila. La decisión prioriza la base de datos transaccional como núcleo del sistema, no una base documental NoSQL.
+Precisión técnica: Firestore sí ofrece transacciones ACID dentro de sus límites y alcance documentados; el motivo del cambio no es afirmar que carezca por completo de atomicidad. Para el dominio de TuCambio, PostgreSQL resulta más adecuado porque ofrece un modelo relacional con foreign keys, unique/check constraints, joins, bloqueos, aislamiento transaccional configurable y funciones SQL para expresar invariantes entre múltiples entidades. Supabase proporciona PostgreSQL real y administra servicios complementarios alrededor de esa base. La decisión prioriza la integridad relacional y la capacidad de ejecutar operaciones financieras multi-entidad en una transacción SQL.
 
 ### 9.2 Componentes destino
 
