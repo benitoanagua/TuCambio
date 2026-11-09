@@ -44,13 +44,21 @@ begin
      or has_function_privilege('authenticated',
        'public.create_tenant_evidence(uuid,uuid,uuid,text,bigint)', 'EXECUTE')
      or has_function_privilege('anon',
-       'public.complete_tenant_evidence(uuid,uuid,uuid,bytea)', 'EXECUTE') then
+       'public.complete_tenant_evidence(uuid,uuid,uuid,bytea)', 'EXECUTE')
+     or has_function_privilege('authenticated',
+       'public.get_tenant_evidence_for_download(uuid,uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('anon',
+       'public.get_pending_tenant_evidence_for_upload(uuid,uuid,uuid)', 'EXECUTE') then
     raise exception 'Evidence grants are broader than the reviewed contract';
   end if;
   if not has_function_privilege('tucambio_backend',
        'public.create_tenant_evidence(uuid,uuid,uuid,text,bigint)', 'EXECUTE')
      or not has_function_privilege('tucambio_backend',
-       'public.complete_tenant_evidence(uuid,uuid,uuid,bytea)', 'EXECUTE') then
+       'public.complete_tenant_evidence(uuid,uuid,uuid,bytea)', 'EXECUTE')
+     or not has_function_privilege('tucambio_backend',
+       'public.get_tenant_evidence_for_download(uuid,uuid,uuid)', 'EXECUTE')
+     or not has_function_privilege('tucambio_backend',
+       'public.get_pending_tenant_evidence_for_upload(uuid,uuid,uuid)', 'EXECUTE') then
     raise exception 'Backend role cannot execute evidence lifecycle functions';
   end if;
 end;
@@ -147,6 +155,27 @@ begin
     decode(repeat('ef', 32), 'hex')
   ) then
     raise exception 'Evidence without a Storage object was finalized';
+  end if;
+  if (select count(*) from public.get_pending_tenant_evidence_for_upload(
+      '51000000-0000-0000-0000-000000000003',
+      '52000000-0000-0000-0000-000000000001',
+      '56000000-0000-0000-0000-000000000002'
+    )) <> 1 then
+    raise exception 'Backend cannot retrieve creator-owned pending evidence for verification';
+  end if;
+  if (select count(*) from public.get_tenant_evidence_for_download(
+      '51000000-0000-0000-0000-000000000003',
+      '52000000-0000-0000-0000-000000000001',
+      '56000000-0000-0000-0000-000000000001'
+    )) <> 1 then
+    raise exception 'Backend cannot authorize download for an active tenant operator';
+  end if;
+  if (select count(*) from public.get_tenant_evidence_for_download(
+      '51000000-0000-0000-0000-000000000002',
+      '52000000-0000-0000-0000-000000000001',
+      '56000000-0000-0000-0000-000000000001'
+    )) <> 0 then
+    raise exception 'Backend download lookup allowed a cross-tenant actor';
   end if;
 end;
 $$;
