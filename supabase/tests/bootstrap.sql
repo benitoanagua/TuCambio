@@ -1,6 +1,7 @@
 -- Minimal Supabase-compatible schemas for migration integration tests.
 create role anon nologin;
 create role authenticated nologin;
+create role tucambio_backend nologin;
 
 create schema auth;
 create table auth.users (
