@@ -1,19 +1,11 @@
-# Tu Cambio — Especificación consolidada
+# TuCambio
 
-Este directorio contiene el consolidado funcional y de negocio de **Tu Cambio**, derivado del trabajo de investigación, refinamiento y simulación realizado sobre el proyecto anteriormente denominado Tu-Pago.
+TuCambio es una plataforma libre, abierta, genérica y multimoneda para operadores de cambio. La especificación funcional está en [INDICE_MAESTRO.md](INDICE_MAESTRO.md) y el plan de migración tecnológica en [MIGRACION_TU_PAGO_APP.md](MIGRACION_TU_PAGO_APP.md).
 
-## Alcance
+## Backend MVP
 
-La documentación describe exclusivamente el comportamiento y las reglas del negocio. Se excluyen deliberadamente tecnologías, plataformas, lenguajes, arquitectura de implementación, APIs, bases de datos y decisiones de infraestructura.
+La base Kotlin/JVM + Ktor, Docker y guía de Cloud Run está en [backend/README.md](backend/README.md). El backend se conecta progresivamente a Supabase; no se incluyen credenciales ni se despliega infraestructura desde este repositorio.
 
-## Criterio de consolidación
+## Supabase
 
-Se conservaron las definiciones y reglas que fueron establecidas durante el trabajo. Los conceptos identificados como obsoletos o descartados no se presentan como parte del dominio actual. Las decisiones todavía abiertas permanecen separadas en `17-politicas-pendientes`.
-
-## Importante sobre validación
-
-La carpeta `16-validacion` conserva los resultados documentados de los escenarios y simulaciones realizados durante la investigación. “Validado / simulado” significa que el comportamiento fue contrastado en esos escenarios; no constituye por sí mismo una certificación externa o una prueba de producción.
-
-## Navegación
-
-Comenzar por `INDICE_MAESTRO.md` y después recorrer las carpetas en orden numérico.
+La arquitectura de PostgreSQL, Auth, Storage, RLS y servicios complementarios está documentada en [supabase/README.md](supabase/README.md).
