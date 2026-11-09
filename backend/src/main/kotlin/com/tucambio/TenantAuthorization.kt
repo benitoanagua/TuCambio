@@ -56,11 +56,11 @@ class PostgresTenantAccessRepository private constructor(private val dataSource:
             require(uri.scheme == "postgres" || uri.scheme == "postgresql") {
                 "DATABASE_URL must use postgres:// or postgresql://"
             }
-            require(!uri.host.isNullOrBlank() && uri.userInfo != null && !uri.path.isNullOrBlank() && uri.path != "/") {
+            require(!uri.host.isNullOrBlank() && uri.rawUserInfo != null && !uri.path.isNullOrBlank() && uri.path != "/") {
                 "DATABASE_URL must include host, credentials and database"
             }
             require(uri.fragment == null) { "DATABASE_URL must not contain a fragment" }
-            val credentials = uri.userInfo.split(":", limit = 2)
+            val credentials = uri.rawUserInfo.split(":", limit = 2)
             require(credentials.size == 2) { "DATABASE_URL must include username and password" }
             val jdbcUrl = buildString {
                 append("jdbc:postgresql://").append(uri.host)
