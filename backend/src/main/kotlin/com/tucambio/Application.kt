@@ -2,11 +2,15 @@ package com.tucambio
 
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.principal
+import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respond
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.serialization.kotlinx.json.json
@@ -25,8 +29,9 @@ fun main() {
     ).start(wait = true)
 }
 
-fun Application.module() {
+fun Application.module(authConfig: SupabaseAuthConfig? = SupabaseAuthConfig.fromEnvironment()) {
     install(CallLogging)
+    authConfig?.let(::installSupabaseJwtAuthentication)
     install(ContentNegotiation) {
         json(
             Json {
@@ -54,6 +59,22 @@ fun Application.module() {
         get("/health/ready") {
             call.respond(HealthResponse(status = "ready"))
         }
+
+        if (authConfig == null) {
+            get("/api/v1/me") {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse(error = "authentication_not_configured")
+                )
+            }
+        } else {
+            authenticate("supabase") {
+                get("/api/v1/me") {
+                    val principal = call.principal<JWTPrincipal>()
+                    call.respond(ActorResponse(userId = requireNotNull(principal).payload.subject))
+                }
+            }
+        }
     }
 }
 
@@ -66,4 +87,14 @@ data class ServiceInfo(
 @Serializable
 data class HealthResponse(
     val status: String
+)
+
+@Serializable
+data class ActorResponse(
+    val userId: String
+)
+
+@Serializable
+data class ErrorResponse(
+    val error: String
 )
