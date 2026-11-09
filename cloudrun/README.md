@@ -54,7 +54,7 @@ Los marcadores `REGION`, `PROJECT_ID`, `REPOSITORY` y `TAG` deben reemplazarse p
 - No habilitar acceso público a comandos de negocio hasta que Supabase Auth/JWT y autorización por tenant estén implementados y probados.
 - Los endpoints de health no contienen datos sensibles.
 - Una vez implementado Auth, el servicio podrá aceptar tráfico público y validar JWT de Supabase en Ktor; la autorización de negocio seguirá siendo del backend.
-- Las credenciales de PostgreSQL y claves secretas se inyectarán desde Secret Manager, nunca como valores versionados.
+- Las credenciales de PostgreSQL y claves secretas se inyectarán desde Secret Manager, nunca como valores versionados. `SUPABASE_SERVICE_ROLE_KEY` es un secreto exclusivo del backend para el flujo de Storage; jamás debe configurarse en clientes.
 - No usar una clave service-role en clientes.
 - Configurar timeouts, límites de solicitudes, protección contra abuso y logs sin tokens ni URLs firmadas.
 
