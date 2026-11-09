@@ -4,6 +4,13 @@
 
 begin;
 
+-- Give the natural-key currency catalogue a stable resource identifier for
+-- events and idempotency results without changing its tenant/code identity.
+alter table public.tenant_currencies
+  add column id uuid not null default gen_random_uuid();
+alter table public.tenant_currencies
+  add constraint tenant_currencies_tenant_id_unique unique (tenant_id, id);
+
 alter table public.financial_domain_events
   drop constraint financial_domain_events_entity_type;
 alter table public.financial_domain_events
@@ -140,15 +147,7 @@ begin
     tenant_id, code, name, decimal_places, created_by_membership_id, created_by_user_id
   ) values (
     p_tenant_id, upper(btrim(p_code)), btrim(p_name), p_decimal_places, v_membership_id, p_actor_user_id
-  );
-
-  -- Currency codes are natural keys; the API response uses a stable UUID-shaped
-  -- resource only for idempotency, so derive it from the tenant/code identity.
-  v_resource_id := (substr(md5(p_tenant_id::text || ':' || upper(btrim(p_code))), 1, 8) || '-' ||
-                    substr(md5(p_tenant_id::text || ':' || upper(btrim(p_code))), 9, 4) || '-' ||
-                    substr(md5(p_tenant_id::text || ':' || upper(btrim(p_code))), 13, 4) || '-' ||
-                    substr(md5(p_tenant_id::text || ':' || upper(btrim(p_code))), 17, 4) || '-' ||
-                    substr(md5(p_tenant_id::text || ':' || upper(btrim(p_code))), 21, 12))::uuid;
+  ) returning id into v_resource_id;
 
   perform public.finish_financial_command(p_tenant_id, p_actor_user_id, 'CREATE_CURRENCY',
     p_idempotency_key, p_request_sha256, v_resource_id);
