@@ -86,7 +86,7 @@ class PostgresTenantAccessRepository private constructor(private val dataSource:
             return PostgresTenantAccessRepository(HikariDataSource(config))
         }
 
-        private fun decode(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
+        private fun decode(value: String): String = URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8)
     }
 }
 
