@@ -73,7 +73,6 @@ interface FinancialCommandRepository : AutoCloseable {
     fun createMovement(actorId: UUID, tenantId: UUID, request: CreateExternalMovementRequest, key: String, hash: ByteArray): JsonObject
     fun associateMovement(actorId: UUID, tenantId: UUID, request: AssociateExternalMovementRequest, key: String, hash: ByteArray): JsonObject
     fun transitionMovement(actorId: UUID, tenantId: UUID, movementId: String, request: TransitionExternalMovementRequest, key: String, hash: ByteArray): JsonObject
-    fun applyOperationRate(actorId: UUID, tenantId: UUID, operationId: String, key: String, hash: ByteArray): JsonObject
     override fun close() {}
 }
 
@@ -132,11 +131,6 @@ class PostgresFinancialCommandRepository private constructor(private val dataSou
             setString(4, request.targetStatus)
         }
 
-    override fun applyOperationRate(actorId: UUID, tenantId: UUID, operationId: String, key: String, hash: ByteArray) =
-        execute("select public.command_apply_operation_rate(?, ?, ?, ?, ?)", actorId, tenantId, key, hash) {
-            setObject(3, uuid(operationId))
-        }
-
     private fun execute(
         sql: String,
         actorId: UUID,
@@ -156,7 +150,6 @@ class PostgresFinancialCommandRepository private constructor(private val dataSou
                     "select public.command_create_currency_rate(?, ?, ?, ?, ?, ?, ?, ?, ?)" -> 8
                     "select public.command_create_financial_operation(?, ?, ?, ?, ?, ?, ?, ?)" -> 7
                     "select public.command_create_external_movement(?, ?, ?, ?, ?, ?, ?, ?, ?)" -> 8
-                    "select public.command_apply_operation_rate(?, ?, ?, ?, ?)" -> 4
                     else -> 5
                 }
                 statement.setString(last, key)
@@ -236,9 +229,6 @@ class FinancialCommandService(private val repository: FinancialCommandRepository
 
     fun transitionMovement(actor: UUID, tenant: UUID, movementId: String, request: TransitionExternalMovementRequest, key: String) =
         repository.transitionMovement(actor, tenant, movementId, request, key, hash(mapOf("movementId" to movementId, "targetStatus" to request.targetStatus)))
-
-    fun applyOperationRate(actor: UUID, tenant: UUID, operationId: String, key: String) =
-        repository.applyOperationRate(actor, tenant, operationId, key, hash(mapOf("operationId" to operationId, "command" to "APPLY_OPERATION_RATE")))
 
     private inline fun <reified T> hash(request: T): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(json.encodeToString(request).toByteArray(StandardCharsets.UTF_8))
