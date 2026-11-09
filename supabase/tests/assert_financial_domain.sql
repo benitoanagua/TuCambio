@@ -165,7 +165,7 @@ set source_effective_at = '2026-11-01T10:45:00Z',
     applied_rate = 6.90
 where id = '66000000-0000-0000-0000-000000000001';
 
-do $
+do $$
 begin
   begin
     update public.financial_operations set applied_rate = 6.91
@@ -174,7 +174,7 @@ begin
   exception when object_not_in_prerequisite_state then null;
   end;
 end;
-$;
+$$;
 
 insert into public.external_movements (
   id, tenant_id, currency_code, amount, effective_at,
