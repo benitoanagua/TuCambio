@@ -123,7 +123,6 @@ as $$
 declare
   v_membership_id uuid;
   v_resource_id uuid;
-  v_replayed boolean := false;
 begin
   v_membership_id := public.assert_financial_command_actor(p_actor_user_id, p_tenant_id, 'settings.manage');
   v_resource_id := public.claim_financial_command(p_tenant_id, p_actor_user_id, 'CREATE_CURRENCY', p_idempotency_key, p_request_sha256);
@@ -136,11 +135,6 @@ begin
   ) values (
     p_tenant_id, upper(btrim(p_code)), btrim(p_name), p_decimal_places, v_membership_id, p_actor_user_id
   );
-
-  v_resource_id := null;
-  select c.code into strict v_resource_id
-  from public.tenant_currencies c
-  where c.tenant_id = p_tenant_id and c.code = upper(btrim(p_code));
 
   -- Currency codes are natural keys; the API response uses a stable UUID-shaped
   -- resource only for idempotency, so derive it from the tenant/code identity.
@@ -156,7 +150,7 @@ begin
     tenant_id, actor_membership_id, actor_user_id, entity_type, entity_id, event_type
   ) values (p_tenant_id, v_membership_id, p_actor_user_id, 'RATE', v_resource_id, 'CURRENCY_CREATED');
 
-  return jsonb_build_object('resourceId', v_resource_id, 'code', upper(btrim(p_code)), 'replayed', v_replayed);
+  return jsonb_build_object('resourceId', v_resource_id, 'code', upper(btrim(p_code)), 'replayed', false);
 end;
 $$;
 
