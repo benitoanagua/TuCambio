@@ -62,7 +62,13 @@ insert into public.tenant_evidence (
   '91000000-0000-0000-0000-000000000001',
   'operation-evidence',
   '92000000-0000-0000-0000-000000000001/96000000-0000-0000-0000-000000000001',
-  'image/png', 8, decode(repeat('ef', 32), 'hex'), 'available', now(), now());
+  'image/png', 8, decode(repeat('ef', 32), 'hex'), 'available', now(), now()),
+  ('96000000-0000-0000-0000-000000000002',
+   '92000000-0000-0000-0000-000000000001',
+   '91000000-0000-0000-0000-000000000001',
+   'operation-evidence',
+   '92000000-0000-0000-0000-000000000001/96000000-0000-0000-0000-000000000002',
+   'image/png', 8, decode(repeat('fa', 32), 'hex'), 'available', now(), now());
 SQL
 
 # Move the movement to the state from which two operators can make competing
@@ -237,7 +243,7 @@ start_holder "m184-idem-holder" "
 "
 idem_sql="set role tucambio_backend; select public.command_review_tenant_evidence(
  '91000000-0000-0000-0000-000000000001','92000000-0000-0000-0000-000000000001',
- '96000000-0000-0000-0000-000000000001','EN_REVISION',null,'evidence-idem-race',decode(repeat('06',32),'hex'));"
+ '96000000-0000-0000-0000-000000000002','EN_REVISION',null,'evidence-idem-race',decode(repeat('06',32),'hex'));"
 PGAPPNAME="m184-idem-a" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "$idem_sql" >"$tmp_dir/m184-idem-a.log" 2>&1 &
 pid_a=$!
 PGAPPNAME="m184-idem-b" psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "$idem_sql" >"$tmp_dir/m184-idem-b.log" 2>&1 &
@@ -256,7 +262,7 @@ psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "
   do \$\$
   begin
     if (select count(*) from public.evidence_review_events
-        where evidence_id = '96000000-0000-0000-0000-000000000001') <> 1 then
+        where evidence_id = '96000000-0000-0000-0000-000000000002') <> 1 then
       raise exception 'Idempotent race must not duplicate review events';
     end if;
     if (select count(*) from public.financial_command_idempotency
