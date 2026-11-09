@@ -18,6 +18,17 @@ create table storage.buckets (
   allowed_mime_types text[]
 );
 
+-- Minimal Storage objects contract used by M1.6 policy tests.
+create table storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text not null references storage.buckets(id),
+  name text not null,
+  owner_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (bucket_id, name)
+);
+
 -- Supabase Auth helper used by RLS policies in a managed project.
 create or replace function auth.uid()
 returns uuid

@@ -1,6 +1,6 @@
 # Esquema de identidad y autorización multi-tenant
 
-**Milestone:** M1.1 / M1.4 / M1.5  
+**Milestone:** M1.1 / M1.4 / M1.5 / M1.6  
 **Estado:** implementado como migración SQL; pendiente aplicar y validar en un proyecto Supabase real.  
 **Migración:** `20261109000200_identity_multitenant_schema.sql`
 
@@ -78,3 +78,14 @@ No se inventan estas políticas dentro de M1.1. Se cierran antes de exponer las 
 `supabase/tests/bootstrap.sql` crea los objetos mínimos equivalentes a Supabase Auth/Storage para validar migraciones en PostgreSQL limpio. `assert_identity_schema.sql` comprueba catálogo, RLS, ausencia de privilegios de cliente y rechazo de asignaciones de roles cruzadas entre tenants. El workflow ejecuta todas las migraciones versionadas en PostgreSQL 17 antes de construir el backend y el contenedor.
 
 Esta prueba no reemplaza una validación en un proyecto Supabase administrado ni pruebas completas de políticas RLS; estas pertenecen al siguiente hito.
+
+
+## Evidencias privadas (M1.6)
+
+- `tenant_evidence` conserva tenant, creador, bucket, ruta determinista, MIME declarado, tamaño esperado, SHA-256 y estado (`pending`, `available`, `rejected`).
+- La ruta es `<tenant_uuid>/<evidence_uuid>`; el cliente no selecciona bucket ni ruta arbitraria.
+- El bucket `operation-evidence` es privado. Límite por archivo: 10 MiB. Tipos declarados admitidos: PDF, JPEG, PNG y WebP.
+- Solo `tucambio_backend` puede ejecutar `create_tenant_evidence` y `complete_tenant_evidence`. No tiene grants directos de tabla ni `BYPASSRLS`.
+- Storage permite INSERT únicamente para una fila `pending` creada por el backend, por el mismo usuario y con MIME/tamaño coincidentes. SELECT solo para evidencia `available` y con capacidad vigente. No hay UPDATE/DELETE para clientes.
+- Ktor debe verificar los bytes reales, MIME detectado, tamaño real y SHA-256 antes de finalizar. La función de finalización comprueba que el objeto correspondiente exista y coincida con el tamaño/tipo declarados, pero no sustituye la inspección de contenido.
+- Esta etapa no añade aún endpoints Ktor ni finge URLs firmadas; el adaptador HTTP de carga/descarga se implementará después del contrato de seguridad.
