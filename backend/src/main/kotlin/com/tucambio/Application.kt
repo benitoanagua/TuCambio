@@ -43,11 +43,11 @@ fun Application.module(
     val effectiveEvidenceRepository = evidenceRepository
         ?: if (authConfig != null) PostgresEvidenceRepository.fromEnvironment() else null
     val effectiveEvidenceStorage = evidenceStorage
-        ?: SupabaseStorageConfig.fromEnvironment()?.let(::SupabaseEvidenceObjectStorage)
-    effectiveEvidenceRepository?.let { repository ->
-        if (repository !== evidenceRepository && repository is AutoCloseable) {
-            monitor.subscribe(ApplicationStopped) { repository.close() }
-        }
+        ?: if (authConfig != null) {
+            SupabaseStorageConfig.fromEnvironment()?.let { SupabaseEvidenceObjectStorage(it) }
+        } else null
+    if (effectiveEvidenceRepository != null && evidenceRepository == null) {
+        monitor.subscribe(ApplicationStopped) { effectiveEvidenceRepository.close() }
     }
     val evidenceWorkflow = if (effectiveEvidenceRepository != null && effectiveEvidenceStorage != null) {
         EvidenceWorkflowService(effectiveEvidenceRepository, effectiveEvidenceStorage)
