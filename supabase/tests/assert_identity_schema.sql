@@ -20,9 +20,12 @@ begin
       raise exception 'RLS is not enabled on public.%', table_name;
     end if;
     if has_table_privilege('anon', format('public.%I', table_name), 'SELECT')
-       or has_table_privilege('authenticated', format('public.%I', table_name), 'SELECT')
+       or not has_table_privilege('authenticated', format('public.%I', table_name), 'SELECT')
        or has_table_privilege('anon', format('public.%I', table_name), 'INSERT')
-       or has_table_privilege('authenticated', format('public.%I', table_name), 'INSERT') then
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'INSERT')
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'UPDATE')
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'DELETE')
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'TRUNCATE') then
       raise exception 'Unexpected client table privilege on public.%', table_name;
     end if;
   end loop;
@@ -33,6 +36,12 @@ begin
   if has_function_privilege('anon', 'public.resolve_tenant_access(uuid,uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.resolve_tenant_access(uuid,uuid)', 'EXECUTE') then
     raise exception 'Client roles can execute tenant resolver';
+  end if;
+  if not has_function_privilege('authenticated', 'public.is_tenant_member(uuid)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.has_tenant_capability(uuid,text)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.is_tenant_member(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.has_tenant_capability(uuid,text)', 'EXECUTE') then
+    raise exception 'RLS helper function grants are incorrect';
   end if;
   if (select rolbypassrls from pg_roles where rolname = 'tucambio_backend') then
     raise exception 'Backend group role must not bypass RLS';
