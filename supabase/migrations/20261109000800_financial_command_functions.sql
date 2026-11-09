@@ -4,6 +4,12 @@
 
 begin;
 
+alter table public.financial_domain_events
+  drop constraint financial_domain_events_entity_type;
+alter table public.financial_domain_events
+  add constraint financial_domain_events_entity_type
+  check (entity_type in ('CURRENCY', 'CURRENCY_PAIR', 'OPERATION', 'MOVEMENT', 'RATE', 'EVIDENCE_LINK'));
+
 create or replace function public.assert_financial_command_actor(
   p_actor_user_id uuid,
   p_tenant_id uuid,
@@ -148,7 +154,7 @@ begin
     p_idempotency_key, p_request_sha256, v_resource_id);
   insert into public.financial_domain_events (
     tenant_id, actor_membership_id, actor_user_id, entity_type, entity_id, event_type
-  ) values (p_tenant_id, v_membership_id, p_actor_user_id, 'RATE', v_resource_id, 'CURRENCY_CREATED');
+  ) values (p_tenant_id, v_membership_id, p_actor_user_id, 'CURRENCY', v_resource_id, 'CURRENCY_CREATED');
 
   return jsonb_build_object('resourceId', v_resource_id, 'code', upper(btrim(p_code)), 'replayed', false);
 end;
@@ -188,7 +194,7 @@ begin
     p_idempotency_key, p_request_sha256, v_resource_id);
   insert into public.financial_domain_events (
     tenant_id, actor_membership_id, actor_user_id, entity_type, entity_id, event_type
-  ) values (p_tenant_id, v_membership_id, p_actor_user_id, 'RATE', v_resource_id, 'CURRENCY_PAIR_CREATED');
+  ) values (p_tenant_id, v_membership_id, p_actor_user_id, 'CURRENCY_PAIR', v_resource_id, 'CURRENCY_PAIR_CREATED');
 
   return jsonb_build_object('resourceId', v_resource_id, 'replayed', false);
 end;
