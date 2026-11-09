@@ -63,7 +63,7 @@ El contenedor ejecuta como usuario no privilegiado y recibe el puerto mediante l
 
 ## Configuración y secretos
 
-No hay credenciales de Supabase ni conexión PostgreSQL en esta primera iteración. Se incorporarán junto con el esquema, Auth/JWT y el pool de conexiones, usando variables de entorno/Secret Manager. No se deben añadir claves service-role, contraseñas SQL ni secretos al repositorio, a la imagen o al cliente.
+La verificación JWT se configura con `SUPABASE_URL` y `SUPABASE_JWT_AUDIENCE`. No se almacena ni se necesita una clave service-role para verificar firmas asimétricas mediante JWKS. Las credenciales administrativas de PostgreSQL y cualquier clave secreta permanecen fuera del repositorio, de la imagen y del cliente.
 
 ## Despliegue
 
