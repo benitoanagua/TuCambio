@@ -304,3 +304,126 @@ Referencias oficiales:
 - Las URLs firmadas expiran y no sustituyen la autorización del caso de uso.
 - La base conserva metadatos, hash y auditoría; los objetos tienen estrategia independiente de respaldo y restauración.
 - El plan Free solo se usa para desarrollo, pruebas o piloto de bajo riesgo. Antes de producción se revisan cuota, egress, pausa, backups, RPO/RTO y costo del plan elegido.
+
+
+## 11. Supabase como plataforma backend completa (ADR-TC-003)
+
+**Estado:** Decisión arquitectónica adoptada.  
+**Fecha:** 2026-11-09  
+**Alcance:** Adoptar los servicios Supabase que aportan valor al producto, sin convertir cada servicio disponible en una dependencia obligatoria ni duplicar la lógica financiera.
+
+TuCambio utilizará Supabase como plataforma backend integrada. PostgreSQL será el núcleo; Auth, RLS, Storage, Realtime, Edge Functions, Cron, Queues y Vault se incorporarán según las responsabilidades descritas en este ADR. Kotlin/Ktor se conserva como backend principal de los casos de uso financieros y de autorización.
+
+### 11.1 Catálogo de servicios y decisión
+
+| Servicio Supabase | Decisión en TuCambio | Responsabilidad |
+|---|---|---|
+| Postgres Database | **Base obligatoria** | Fuente de verdad relacional; constraints, transacciones, índices, funciones, auditoría y outbox. |
+| Supabase Auth | **Adoptar** | Registro, inicio/cierre de sesión, recuperación, verificación de email, OTP/magic link, OAuth según configuración y gestión de sesiones. |
+| JWT + RLS | **Adoptar obligatoriamente** | Identidad autenticada y aislamiento de filas por tenant; políticas de mínimo privilegio. |
+| Storage | **Adoptar** | Evidencias y comprobantes en buckets privados. |
+| Realtime | **Adoptar selectivamente** | Actualización de vistas, avisos de cambios y presencia operativa no crítica; nunca confirmar dinero ni reemplazar lecturas consistentes. |
+| Edge Functions | **Adoptar para tareas acotadas** | Webhooks, callbacks, integraciones externas pequeñas, endpoints auxiliares y tareas cercanas al usuario. No alojar el núcleo de operaciones financieras si requiere transacciones largas o lógica compartida Kotlin. |
+| Supabase Queues | **Adoptar cuando se active procesamiento asíncrono** | Cola durable basada en Postgres para trabajos, reintentos y consumidores; usar junto con outbox/idempotencia. |
+| Supabase Cron | **Adoptar para programación** | Expiración de cotizaciones, limpieza lógica/retención, recordatorios, conciliaciones programadas y disparo de workers; cada tarea idempotente y auditable. |
+| Supabase Vault | **Adoptar para secretos usados dentro de Postgres** | Guardar secretos de integraciones y credenciales que necesiten funciones SQL/Cron; no sustituye el gestor de secretos del backend ni permite exponer secretos al cliente. |
+| Data API / PostgREST | **Disponible, uso restringido** | Consultas autorizadas y operaciones simples protegidas por RLS. No publicar escrituras financieras sensibles ni conceder DML general al cliente. |
+| GraphQL | **Opcional, no inicial** | Evaluar solo si aparece un consumidor que lo justifique; no duplicar contratos Ktor sin necesidad. |
+| Database Webhooks / pg_net | **Opcional y acotado** | Disparar integraciones no críticas mediante outbox o eventos; nunca dentro de la ruta de confirmación financiera. |
+| Database Extensions | **Adoptar según necesidad** | Extensiones oficiales/soportadas para UUID, criptografía, scheduling, búsqueda u observabilidad, verificando compatibilidad y coste. |
+| AI / pgvector | **No activar en el núcleo** | Futuro uso opcional para búsqueda semántica de documentos/ayuda; jamás para decidir tasas, verificar comprobantes o autorizar movimientos. |
+| Supabase Studio / CLI / Management API | **Adoptar para operación** | Administración, desarrollo local, migraciones, configuración y despliegue reproducible. Management API requiere credenciales administrativas solo en CI/operaciones seguras. |
+| Logs, métricas y plataforma | **Adoptar** | Observabilidad de DB, Auth, Storage, Edge Functions y servicios; correlación con request_id y audit events propios. |
+
+### 11.2 Supabase Auth: identidad de toda la plataforma
+
+Supabase Auth será el proveedor de identidad para aplicaciones web/móvil y usuarios del backend.
+
+Métodos previstos, habilitados por etapa:
+- Email + contraseña con verificación.
+- Magic link y OTP por email para acceso passwordless.
+- OAuth (por ejemplo Google o Apple) cuando se configuren credenciales y redirect URLs propias.
+- Teléfono/SMS solo si el producto y el coste del proveedor lo justifican; no activarlo por defecto.
+- MFA con TOTP para administradores y operadores con capacidades sensibles; definir obligatoriedad por política y nivel de riesgo.
+
+Reglas:
+1. `auth.users.id` es el identificador externo de identidad; no guardar contraseñas ni replicar credenciales en tablas propias.
+2. Crear un perfil de aplicación separado y una relación explícita usuario–tenant–permisos. Un usuario puede pertenecer a más de un operador/organización si la política del producto lo permite.
+3. No convertir `user_metadata` editable por el usuario en fuente de autorización. Los permisos y la pertenencia se resuelven desde tablas controladas por backend/DB y claims confiables.
+4. Validar JWT, emisor, audiencia, expiración y firma en Kotlin/Ktor usando el mecanismo/JWKS recomendado por Supabase; nunca aceptar un UUID de usuario enviado en el body como prueba de identidad.
+5. El backend deriva actor y tenant de la sesión autenticada y consulta membresías/roles vigentes.
+6. RLS debe usar identidad y membresía verificadas; las políticas deben cubrir SELECT/INSERT/UPDATE/DELETE por separado y aplicar default deny.
+7. Revocación, cierre de sesión, expiración y refresh de sesiones se deben contemplar en backend y clientes.
+8. La cuenta Auth no equivale a un operador comercial: una persona puede tener identidad y luego recibir una invitación a uno o más tenants.
+9. Invitaciones, altas, bajas y cambios de permisos deben generar eventos de auditoría.
+10. MFA UI no basta: las operaciones sensibles deben exigir AAL apropiado también en backend/RLS según la política adoptada.
+
+No se fija todavía el esquema SQL de perfiles, tenants, membresías e invitaciones: se definirá junto con el modelo relacional de M1/M3 para que las claves compuestas, pertenencia multi-tenant y capacidades de la especificación funcional queden coherentes.
+
+### 11.3 Autorización y límites de API
+
+- Kotlin/Ktor es el punto de entrada canónico para los comandos de negocio: crear operación, registrar movimiento, verificar, aplicar tasa, asociar evidencia, liquidar y resolver incidencias.
+- La Data API de Supabase no es una autorización implícita. Toda tabla expuesta requiere grants mínimos y RLS probada.
+- Para clientes, se permiten lecturas directas únicamente donde simplifiquen la experiencia y la política RLS sea suficiente y comprobada.
+- Las operaciones que cambian hechos económicos se ejecutan en una transacción PostgreSQL única, iniciada por Ktor o por una función SQL explícita llamada por Ktor.
+- No usar Edge Functions para eludir la autorización del backend ni para crear una segunda implementación de las reglas de dominio.
+- Las claves publishable/anon pueden estar en clientes según el modelo de Supabase; las secret/service-role keys, claves SQL y credenciales administrativas solo en entornos confiables. Las claves privilegiadas pueden omitir RLS.
+- No exponer el esquema `auth` ni tablas internas del proveedor a través de vistas o APIs públicas.
+
+### 11.4 Eventos en vivo, colas y programación
+
+- Realtime se limita a refrescar listas/estados y notificar cambios ya confirmados en Postgres. El cliente debe poder recuperar el estado canónico con una consulta HTTP/SQL posterior.
+- No enviar comprobantes, tokens, datos bancarios completos ni payloads sensibles en canales Broadcast/Presence.
+- Para trabajo asíncrono, escribir el evento/outbox en la misma transacción del negocio y procesarlo con Queues/worker. Los consumidores son idempotentes y registran intentos, errores y resultado.
+- Cron programa tareas; no es una cola ni un mecanismo de exclusión mutua. Cada job debe ser reentrante, con límites, lock/idempotency key y registro de ejecución.
+- Los webhooks externos se verifican criptográficamente, se deduplican y se procesan fuera de la transacción original.
+
+### 11.5 Secretos, configuración y despliegue
+
+- Vault guarda secretos que deban ser leídos desde funciones SQL/pg_cron; controlar acceso y rotación.
+- Secretos de Ktor se inyectan desde el gestor de secretos del entorno de ejecución (no desde código ni tablas públicas).
+- Separar proyectos Supabase para desarrollo, staging y producción.
+- Supabase CLI y migraciones SQL versionadas son la fuente reproducible de schema/configuración; los cambios de Dashboard se reflejan luego en Git.
+- CI aplica migraciones en base efímera/local y ejecuta pruebas de RLS, Auth, Storage y transacciones. Despliegue productivo requiere aprobación y secretos protegidos.
+- Backups de PostgreSQL y backups/exportaciones de Storage se diseñan y prueban por separado.
+- Medir cuotas y límites del plan: Auth MAU, Storage, egress, Realtime, Edge Function invocations, base de datos, compute, backups y logs. No asumir que todos los servicios o add-ons tienen cuota gratuita ilimitada.
+
+### 11.6 Orden de implementación
+
+1. **M1.1** PostgreSQL: esquema base, tenants, usuarios/perfiles, membresías, capacidades, constraints e índices.
+2. **M1.2** Auth: flujos de sesión, validación JWT Ktor, verificación email, recuperación, invitaciones y políticas de sesión.
+3. **M1.3** RLS: aislamiento tenant, permisos por capacidad y pruebas negativas por cada tabla.
+4. **M1.4** Storage: metadatos de evidencias, rutas privadas, URLs firmadas y autorización tenant-aware.
+5. **M1.5** Dominio financiero: operaciones, movimientos, tasas, idempotencia, auditoría y transacciones.
+6. **M1.6** Realtime: suscripciones solo a cambios autorizados y recuperación de estado canónico.
+7. **M1.7** Outbox + Queues + worker: procesamiento fiable de tareas asíncronas.
+8. **M1.8** Cron + Vault + Edge Functions: automatizaciones, secretos de integraciones y webhooks.
+9. **M1.9** Observabilidad, backups, restore drills, límites y optimización de costes.
+
+### 11.7 Criterios de aceptación de plataforma
+
+- El usuario se autentica con Supabase Auth y Ktor valida el JWT antes de ejecutar cualquier caso de uso protegido.
+- La autorización de tenant/permiso proviene de membresías vigentes, no de metadata editable del cliente.
+- Las políticas RLS impiden lectura/escritura cruzada incluso si un cliente manipula IDs.
+- Un usuario puede tener membresías diferenciadas sin duplicar identidad.
+- MFA se aplica a las acciones/cuentas de alto riesgo en backend, no solo en UI.
+- Realtime no puede cambiar el estado financiero y su caída no afecta integridad.
+- Todo trabajo asíncrono tiene outbox, idempotencia, reintentos y trazabilidad.
+- Cron y Edge Functions no contienen lógica financiera duplicada ni secretos expuestos.
+- No hay service-role/secret keys en artefactos públicos o clientes.
+- Migraciones y configuración se reproducen desde Git en entorno limpio.
+- Los límites/costes de cada servicio están monitorizados antes de producción.
+
+### 11.8 Referencias oficiales
+
+- Plataforma Supabase: https://supabase.com/docs/guides/platform
+- Arquitectura: https://supabase.com/docs/guides/getting-started/architecture
+- Auth: https://supabase.com/docs/guides/auth
+- MFA: https://supabase.com/docs/guides/auth/auth-mfa
+- RLS y seguridad: https://supabase.com/docs/guides/database/secure-data
+- Edge Functions: https://supabase.com/docs/guides/functions
+- Cron: https://supabase.com/docs/guides/cron
+- Programar Edge Functions: https://supabase.com/docs/guides/functions/schedule-functions
+- Queues: https://supabase.com/docs/guides/queues
+- Vault: https://supabase.com/docs/guides/database/vault
+- Supabase CLI: https://supabase.com/docs/guides/cli
