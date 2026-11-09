@@ -50,7 +50,7 @@ create table public.capabilities (
   code text primary key,
   description text not null,
   created_at timestamptz not null default now(),
-  constraint capabilities_code_format check (code ~ '^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)+$')
+  constraint capabilities_code_format check (code ~ '^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$')
 );
 
 insert into public.capabilities (code, description) values
