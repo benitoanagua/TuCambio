@@ -161,7 +161,6 @@ data class SupabaseStorageConfig(val projectUrl: String, val anonKey: String, va
     companion object {
         fun fromEnvironment(environment: Map<String, String> = System.getenv()): SupabaseStorageConfig? {
             val url = environment["SUPABASE_URL"]?.trim()?.takeIf(String::isNotEmpty) ?: return null
-            val anon = environment["SUPABASE_ANON_KEY"]?.trim()?.takeIf(String::isNotEmpty) ?: return null
             val service = environment["SUPABASE_SERVICE_ROLE_KEY"]?.trim()?.takeIf(String::isNotEmpty) ?: return null
             val uri = URI(url)
             val localHttp = uri.scheme == "http" && uri.host in setOf("localhost", "127.0.0.1", "::1")
@@ -170,13 +169,13 @@ data class SupabaseStorageConfig(val projectUrl: String, val anonKey: String, va
                 "SUPABASE_URL must be a project root URL without credentials, query or fragment"
             }
             require(uri.path.isNullOrEmpty() || uri.path == "/") { "SUPABASE_URL must be a project root URL" }
-            return SupabaseStorageConfig(url.trimEnd('/'), anon, service)
+            return SupabaseStorageConfig(url.trimEnd('/'), service)
         }
     }
 }
 
 interface EvidenceObjectStorage {
-    fun createSignedUploadUrl(objectPath: String, actorAccessToken: String): String
+    fun createSignedUploadUrl(objectPath: String): String
     fun downloadObject(objectPath: String): ByteArray
     fun createSignedDownloadUrl(objectPath: String, expiresInSeconds: Int = 60): String
 }
@@ -188,14 +187,13 @@ class SupabaseEvidenceObjectStorage(
         .followRedirects(HttpClient.Redirect.NEVER)
         .build()
 ) : EvidenceObjectStorage {
-    override fun createSignedUploadUrl(objectPath: String, actorAccessToken: String): String {
+    override fun createSignedUploadUrl(objectPath: String): String {
         requireValidObjectPath(objectPath)
-        require(actorAccessToken.isNotBlank()) { "Authenticated access token is required" }
         val response = send(
             HttpRequest.newBuilder(storageUri("/object/upload/sign/$EVIDENCE_BUCKET/$objectPath"))
                 .timeout(Duration.ofSeconds(5))
-                .header("apikey", config.anonKey)
-                .header("Authorization", "Bearer $actorAccessToken")
+                .header("apikey", config.serviceRoleKey)
+                .header("Authorization", "Bearer ${config.serviceRoleKey}")
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build()
         )
@@ -279,11 +277,11 @@ class SupabaseEvidenceObjectStorage(
 class EvidenceValidationException(message: String) : RuntimeException(message)
 
 class EvidenceWorkflowService(private val repository: EvidenceRepository, private val storage: EvidenceObjectStorage) {
-    fun createUpload(actorUserId: UUID, tenantId: UUID, mimeType: String, expectedSizeBytes: Long, actorAccessToken: String): EvidenceUploadGrant {
+    fun createUpload(actorUserId: UUID, tenantId: UUID, mimeType: String, expectedSizeBytes: Long): EvidenceUploadGrant {
         validateDeclaration(mimeType, expectedSizeBytes)
         val evidenceId = UUID.randomUUID()
         val record = repository.createPending(actorUserId, tenantId, evidenceId, mimeType, expectedSizeBytes)
-        val signedUrl = storage.createSignedUploadUrl(record.objectPath, actorAccessToken)
+        val signedUrl = storage.createSignedUploadUrl(record.objectPath)
         return EvidenceUploadGrant(record.id.toString(), record.bucketId, record.objectPath, signedUrl, "PUT")
     }
 
