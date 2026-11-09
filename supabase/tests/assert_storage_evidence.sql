@@ -178,7 +178,7 @@ begin
     raise exception 'Backend download lookup allowed a cross-tenant actor';
   end if;
 end;
-$;
+$$;
 reset role;
 
 -- Verified evidence is visible to an authorized tenant member only.
