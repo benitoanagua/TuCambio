@@ -36,7 +36,7 @@ Puerto por defecto: `8080`, configurable mediante `PORT`.
 | `POST /api/v1/tenants/{tenantId}/currency-rates` | Alta idempotente de tasa con vigencia |
 | `POST /api/v1/tenants/{tenantId}/operations` | Crea operación financiera en estado inicial |
 | `POST /api/v1/tenants/{tenantId}/movements` | Registra movimiento externo declarado |
-| `POST /api/v1/tenants/{tenantId}/movement-associations` | Asocia un movimiento a una operación con rol ORIGIN o DESTINATION |
+| `POST /api/v1/tenants/{tenantId}/movement-associations` | Asocia un movimiento a una operación con rol ORIGIN o DESTINATION |\n| `POST /api/v1/tenants/{tenantId}/movements/{movementId}/transitions` | Avanza el ciclo de verificación de un movimiento externo |
 
 Los endpoints de API requieren Bearer access token válido de Supabase. Sin `SUPABASE_URL`, responden 503.
 
@@ -100,3 +100,16 @@ La API calcula SHA-256 del DTO serializado y lo envía junto con la clave de ide
 La conexión `DATABASE_URL` debe usar una credencial privada de servidor miembro de `tucambio_backend`. Ese rol recibe EXECUTE únicamente sobre las funciones de comando; no obtiene DML directo sobre las tablas financieras ni BYPASSRLS. Los eventos de dominio y la idempotencia se persisten en la misma transacción PostgreSQL que la escritura.
 
 Estos endpoints no confirman movimientos, no aplican tasas automáticamente, no calculan importes finales ni liquidan operaciones. Esas transiciones y reglas requieren especificación aprobada; no se infieren desde el alta o la asociación.
+
+
+## Verificación de movimientos (M1.8.1)
+
+El endpoint de transición recibe `{"targetStatus":"IN_VERIFICATION"}`, `{"targetStatus":"CONFIRMED"}` o `{"targetStatus":"NOT_CONFIRMED"}` y exige `Idempotency-Key`. Las únicas transiciones válidas son:
+
+- `DECLARED → IN_VERIFICATION`
+- `IN_VERIFICATION → CONFIRMED`
+- `IN_VERIFICATION → NOT_CONFIRMED`
+
+El actor debe tener la capacidad `movements.verify` en el tenant. La función PostgreSQL bloquea la fila del movimiento durante la transición, persiste el nuevo estado, registra el evento de auditoría con estado anterior/nuevo, actor y timestamp, y guarda la clave idempotente en la misma transacción. Los reintentos con la misma clave y cuerpo devuelven el recurso original; una clave reutilizada con otro cuerpo produce conflicto. No hay transiciones inversas ni salida desde un estado terminal. Un movimiento confirmado permanece inmutable.
+
+Esta etapa no aplica tasas ni calcula importes. La tasa se resolverá en M1.8.2 usando el instante efectivo del movimiento de origen una vez confirmado.
