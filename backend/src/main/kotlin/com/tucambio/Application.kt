@@ -186,31 +186,31 @@ fun Application.module(
                 }
                 post("/api/v1/tenants/{tenantId}/currency-pairs") {
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
-                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                    else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.createCurrencyPair(actor, tenant, call.receive<CreateCurrencyPairRequest>(), key)
                     }
                 }
                 post("/api/v1/tenants/{tenantId}/currency-rates") {
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
-                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                    else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.createCurrencyRate(actor, tenant, call.receive<CreateCurrencyRateRequest>(), key)
                     }
                 }
                 post("/api/v1/tenants/{tenantId}/operations") {
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
-                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                    else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.createOperation(actor, tenant, call.receive<CreateFinancialOperationRequest>(), key)
                     }
                 }
                 post("/api/v1/tenants/{tenantId}/movements") {
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
-                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                    else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.createMovement(actor, tenant, call.receive<CreateExternalMovementRequest>(), key)
                     }
                 }
                 post("/api/v1/tenants/{tenantId}/movement-associations") {
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
-                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                    else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.associateMovement(actor, tenant, call.receive<AssociateExternalMovementRequest>(), key)
                     }
                 }
