@@ -282,7 +282,15 @@ class EvidenceWorkflowService(private val repository: EvidenceRepository, privat
         val evidenceId = UUID.randomUUID()
         val record = repository.createPending(actorUserId, tenantId, evidenceId, mimeType, expectedSizeBytes)
         val signedUrl = storage.createSignedUploadUrl(record.objectPath)
-        return EvidenceUploadGrant(record.id.toString(), record.bucketId, record.objectPath, signedUrl, "PUT")
+        return EvidenceUploadGrant(
+            record.id.toString(),
+            record.bucketId,
+            record.objectPath,
+            signedUrl,
+            "PUT",
+            record.mimeType,
+            record.expectedSizeBytes
+        )
     }
 
     fun complete(actorUserId: UUID, tenantId: UUID, evidenceId: UUID): Boolean {
@@ -326,7 +334,13 @@ class EvidenceWorkflowService(private val repository: EvidenceRepository, privat
 
 @Serializable data class CreateEvidenceRequest(val mimeType: String, val sizeBytes: Long)
 @Serializable data class EvidenceUploadGrant(
-    val evidenceId: String, val bucket: String, val objectPath: String, val uploadUrl: String, val uploadMethod: String
+    val evidenceId: String,
+    val bucket: String,
+    val objectPath: String,
+    val uploadUrl: String,
+    val uploadMethod: String,
+    val contentType: String,
+    val maxSizeBytes: Long
 )
 @Serializable data class EvidenceCompleteResponse(val evidenceId: String, val status: String)
 @Serializable data class EvidenceDownloadGrant(val evidenceId: String, val downloadUrl: String, val expiresInSeconds: Int)
