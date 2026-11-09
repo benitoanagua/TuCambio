@@ -29,6 +29,16 @@ class ApplicationTest {
     }
 
     @Test
+    fun protectedIdentityEndpointFailsClosedWhenSupabaseIsNotConfigured() = testApplication {
+        application { module(authConfig = null) }
+
+        val response = client.get("/api/v1/me")
+
+        assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+        assertEquals("""{"error":"authentication_not_configured"}""", response.bodyAsText())
+    }
+
+    @Test
     fun rootEndpointIdentifiesService() = testApplication {
         application { module() }
 
