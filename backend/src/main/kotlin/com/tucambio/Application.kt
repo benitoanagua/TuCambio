@@ -1,6 +1,7 @@
 package com.tucambio
 
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
 import io.ktor.server.auth.authenticate
 import io.ktor.server.auth.principal
@@ -10,8 +11,10 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respond
+import io.ktor.server.request.receive
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
@@ -27,7 +30,9 @@ fun main() {
 
 fun Application.module(
     authConfig: SupabaseAuthConfig? = SupabaseAuthConfig.fromEnvironment(),
-    tenantAccessRepository: TenantAccessRepository? = null
+    tenantAccessRepository: TenantAccessRepository? = null,
+    evidenceRepository: EvidenceRepository? = null,
+    evidenceStorage: EvidenceObjectStorage? = null
 ) {
     install(CallLogging)
     authConfig?.let(::installSupabaseJwtAuthentication)
@@ -35,6 +40,18 @@ fun Application.module(
         ?: if (authConfig != null) PostgresTenantAccessRepository.fromEnvironment() else null
     val authorization = effectiveRepository?.let(::TenantAuthorizationService)
     manageTenantAccessRepository(effectiveRepository)
+    val effectiveEvidenceRepository = evidenceRepository
+        ?: if (authConfig != null) PostgresEvidenceRepository.fromEnvironment() else null
+    val effectiveEvidenceStorage = evidenceStorage
+        ?: SupabaseStorageConfig.fromEnvironment()?.let(::SupabaseEvidenceObjectStorage)
+    effectiveEvidenceRepository?.let { repository ->
+        if (repository !== evidenceRepository && repository is AutoCloseable) {
+            monitor.subscribe(ApplicationStopped) { repository.close() }
+        }
+    }
+    val evidenceWorkflow = if (effectiveEvidenceRepository != null && effectiveEvidenceStorage != null) {
+        EvidenceWorkflowService(effectiveEvidenceRepository, effectiveEvidenceStorage)
+    } else null
 
     install(ContentNegotiation) {
         json(Json { explicitNulls = false; ignoreUnknownKeys = true })
@@ -50,6 +67,15 @@ fun Application.module(
                 call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
             }
             get("/api/v1/tenants/{tenantId}/authorization") {
+                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
+            }
+            post("/api/v1/tenants/{tenantId}/evidence") {
+                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
+            }
+            post("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/complete") {
+                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
+            }
+            get("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/download-url") {
                 call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
             }
         } else {
@@ -80,6 +106,87 @@ fun Application.module(
                             }
                         } catch (_: SQLException) {
                             call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authorization_unavailable"))
+                        }
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/evidence") {
+                    val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
+                    val tenantId = call.parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    if (tenantId == null) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_tenant_id"))
+                    } else if (evidenceWorkflow == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_not_configured"))
+                    } else {
+                        try {
+                            val request = call.receive<CreateEvidenceRequest>()
+                            val grant = evidenceWorkflow.createUpload(actorId, tenantId, request.mimeType, request.sizeBytes)
+                            call.respond(HttpStatusCode.Created, grant)
+                        } catch (_: EvidenceValidationException) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_evidence_declaration"))
+                        } catch (e: SQLException) {
+                            if (e.sqlState == "42501") {
+                                call.respond(HttpStatusCode.Forbidden, ErrorResponse("tenant_access_denied"))
+                            } else {
+                                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_service_unavailable"))
+                            }
+                        } catch (_: IllegalStateException) {
+                            call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_unavailable"))
+                        }
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/complete") {
+                    val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
+                    val tenantId = call.parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    val evidenceId = call.parameters["evidenceId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    if (tenantId == null || evidenceId == null) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_evidence_reference"))
+                    } else if (evidenceWorkflow == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_not_configured"))
+                    } else {
+                        try {
+                            val completed = evidenceWorkflow.complete(actorId, tenantId, evidenceId)
+                            if (completed) {
+                                call.respond(EvidenceCompleteResponse(evidenceId.toString(), "available"))
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, ErrorResponse("pending_evidence_not_found"))
+                            }
+                        } catch (_: EvidenceValidationException) {
+                            call.respond(HttpStatusCode.UnprocessableEntity, ErrorResponse("evidence_content_invalid"))
+                        } catch (e: SQLException) {
+                            if (e.sqlState == "42501") {
+                                call.respond(HttpStatusCode.Forbidden, ErrorResponse("tenant_access_denied"))
+                            } else {
+                                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_service_unavailable"))
+                            }
+                        } catch (_: IllegalStateException) {
+                            call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_unavailable"))
+                        }
+                    }
+                }
+                get("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/download-url") {
+                    val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
+                    val tenantId = call.parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    val evidenceId = call.parameters["evidenceId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    if (tenantId == null || evidenceId == null) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_evidence_reference"))
+                    } else if (evidenceWorkflow == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_not_configured"))
+                    } else {
+                        try {
+                            val grant = evidenceWorkflow.createDownloadUrl(actorId, tenantId, evidenceId)
+                            if (grant == null) {
+                                call.respond(HttpStatusCode.NotFound, ErrorResponse("available_evidence_not_found"))
+                            } else {
+                                call.respond(grant)
+                            }
+                        } catch (e: SQLException) {
+                            if (e.sqlState == "42501") {
+                                call.respond(HttpStatusCode.Forbidden, ErrorResponse("tenant_access_denied"))
+                            } else {
+                                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_service_unavailable"))
+                            }
+                        } catch (_: IllegalStateException) {
+                            call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_unavailable"))
                         }
                     }
                 }
