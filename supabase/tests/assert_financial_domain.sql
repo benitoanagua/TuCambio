@@ -41,6 +41,20 @@ begin
   end if;
 
   begin
+    insert into public.financial_operations (
+      tenant_id, pair_id, source_currency_code, target_currency_code,
+      requested_amount, created_by_membership_id, created_by_user_id
+    ) values (
+      '62000000-0000-0000-0000-000000000001',
+      '64000000-0000-0000-0000-000000000001',
+      'BOB', 'USD', 10,
+      '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
+    );
+    raise exception 'Operation with mismatched pair unexpectedly accepted';
+  exception when check_violation then null;
+  end;
+
+  begin
     insert into public.tenant_currency_pairs (tenant_id, base_currency_code, quote_currency_code)
     values ('62000000-0000-0000-0000-000000000001', 'USD', 'USD');
     raise exception 'Self-referential currency pair unexpectedly accepted';
@@ -153,6 +167,22 @@ begin
   if (select count(*) from public.external_movements where id = '67000000-0000-0000-0000-000000000001') <> 1 then
     raise exception 'Movement may not exist independently of an association';
   end if;
+
+  update public.external_movements set status = 'CONFIRMED'
+  where id = '67000000-0000-0000-0000-000000000001';
+
+  begin
+    update public.external_movements set amount = 101
+    where id = '67000000-0000-0000-0000-000000000001';
+    raise exception 'Confirmed movement was unexpectedly mutable';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+
+  begin
+    delete from public.external_movements where id = '67000000-0000-0000-0000-000000000001';
+    raise exception 'External movement history was unexpectedly deletable';
+  exception when object_not_in_prerequisite_state then null;
+  end;
   begin
     insert into public.operation_movements (
       tenant_id, operation_id, movement_id, movement_role,
