@@ -48,6 +48,7 @@ data class SupabaseAuthConfig(
 
 fun Application.installSupabaseJwtAuthentication(config: SupabaseAuthConfig) {
     val jwkProvider = JwkProviderBuilder(URL(config.jwksUrl))
+        .timeouts(3_000, 5_000)
         .cached(10, 10, TimeUnit.MINUTES)
         .rateLimited(10, 1, TimeUnit.MINUTES)
         .build()
@@ -63,7 +64,7 @@ fun Application.installSupabaseJwtAuthentication(config: SupabaseAuthConfig) {
                 val subject = payload.subject
                 val role = payload.getClaim("role").asString()
                 val anonymous = payload.getClaim("is_anonymous").asBoolean() == true
-                val validSubject = runCatching { UUID.fromString(subject) }.isSuccess
+                val validSubject = runCatching { UUID.fromString(subject).toString() == subject }.getOrDefault(false)
 
                 if (validSubject && role == "authenticated" && !anonymous) {
                     JWTPrincipal(payload)
