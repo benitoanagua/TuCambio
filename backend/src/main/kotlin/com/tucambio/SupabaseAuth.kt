@@ -2,6 +2,7 @@ package com.tucambio
 
 import com.auth0.jwk.JwkProviderBuilder
 import io.ktor.server.application.Application
+import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.jwt.jwt
