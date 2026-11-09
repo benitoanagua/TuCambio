@@ -1,0 +1,107 @@
+# Contrato técnico del dominio financiero (M1.7)
+
+**Estado:** contrato de implementación inicial; no sustituye ni modifica la especificación funcional.  
+**Base normativa:** `INDICE_MAESTRO.md` y `especificacion/`.  
+**Regla de precedencia:** ante cualquier diferencia, prevalece la especificación funcional aprobada.
+
+## 1. Objetivo y límites
+
+M1.7 incorpora el núcleo transaccional de operaciones, movimientos externos y tasas. La implementación debe preservar la separación entre intención comercial, hecho económico externo, evidencia y coordinación del proceso.
+
+TuCambio:
+- registra y coordina operaciones;
+- registra movimientos que ocurrieron fuera de TuCambio;
+- permite movimientos todavía no asociados a una operación;
+- conserva evidencias y asociaciones sin convertirlas en confirmaciones automáticas;
+- calcula el importe autoritativo únicamente cuando existan los datos normativamente requeridos;
+- no custodia fondos ni ejecuta transferencias.
+
+No se incorporan modelos heredados específicos de proveedores, bancos, países o monedas.
+
+## 2. Entidades y responsabilidades
+
+### Moneda y par
+
+- Moneda: código identificador, nombre y precisión configurada.
+- Par: dos monedas distintas, dentro de un tenant, con estado/configuración propios.
+- No se fija una moneda base global ni se codifican combinaciones de monedas en enums.
+- La precisión se almacena como configuración explícita por moneda; las reglas de redondeo siguen pendientes.
+
+### Tasa
+
+- Pertenece a un par y tenant.
+- Conserva valores de compra y venta, vigencia `[valid_from, valid_until)`, autor y timestamps.
+- Las tasas son históricas e inmutables una vez utilizadas; las correcciones se registran como nuevas versiones/eventos, no sobrescribiendo una tasa aplicada.
+- No se crea una tasa implícita ni se extrapola cuando no existe una tasa vigente.
+- La tasa aplicable a la operación se determina por el instante efectivo del movimiento de origen verificado, no por creación de operación ni hora del dispositivo.
+- La zona horaria se normaliza a un instante absoluto; no se almacena como desplazamiento manual.
+
+### Operación
+
+- Es la intención de convertir una moneda origen en una moneda destino.
+- Tiene identidad propia, tenant, actor creador, par/dirección, monto solicitado y estado de operación.
+- Puede existir sin movimientos y puede tener movimientos de origen y destino asociados.
+- Los valores de estimación no congelan la tasa ni sustituyen el cálculo económico autoritativo.
+- La operación no se identifica por usuario, moneda y monto: utiliza UUID propio.
+
+### Movimiento
+
+- Representa un hecho económico externo ya ocurrido o declarado, nunca una transferencia ejecutada por TuCambio.
+- Conserva tenant, moneda, importe, instante efectivo reportado, datos de referencia externos permitidos, actor registrador y estado propio.
+- Puede crearse sin operación asociada.
+- La asociación a operación es explícita y auditable.
+- Un movimiento confirmado no se sobrescribe ni se confirma dos veces.
+- La evidencia es independiente: puede haber múltiples evidencias por movimiento y/o operación; subir evidencia no confirma movimiento.
+
+### Evidencia, incidencia y eventos
+
+- Se reutiliza `tenant_evidence` de M1.6; la asociación al dominio financiero se hará mediante relaciones explícitas tenant-scoped, sin mover objetos ni cambiar el contrato Storage.
+- Una evidencia observada no implica rechazar la operación ni negar que el movimiento ocurrió.
+- Las incidencias registran diferencias y anomalías sin borrar ni reemplazar el hecho económico.
+- Los eventos de dominio/auditoría registran actor, tenant, entidad, acción, instante y correlación; no almacenan secretos ni URLs firmadas.
+
+## 3. Límites transaccionales e idempotencia
+
+- Toda escritura de dominio se ejecuta en Ktor y PostgreSQL dentro de una única transacción ACID.
+- Cada comando con efecto debe aceptar una clave de idempotencia vinculada al tenant, actor/ámbito y tipo de comando.
+- La misma clave con el mismo contenido devuelve el resultado original; la misma clave con contenido distinto se rechaza como conflicto.
+- La unicidad de la identidad de operación y la prevención de doble confirmación de movimiento se refuerzan con constraints/índices, no solo con comprobaciones previas en Kotlin.
+- La asociación y confirmación concurrente de un mismo movimiento debe producir como máximo un efecto válido.
+- Eventos/auditoría del cambio se escriben en la misma transacción que el cambio de estado.
+- No se usa Realtime como mecanismo de escritura ni de exclusión mutua.
+
+## 4. Estados separados
+
+No se crea un único estado que mezcle operación, movimiento, evidencia e incidencia.
+
+- Operación: BORRADOR, PENDIENTE, EN VERIFICACIÓN, PENDIENTE DE LIQUIDACIÓN, EN LIQUIDACIÓN, FINALIZADA, CANCELADA, EXPIRADA o RECHAZADA, sujetos a transiciones aprobadas.
+- Movimiento: DECLARADO, EN VERIFICACIÓN, CONFIRMADO o NO CONFIRMADO.
+- Evidencia: PRESENTADA, EN REVISIÓN, VÁLIDA u OBSERVADA (M1.6 Storage conserva además su estado técnico pending/available/rejected; no confundir ambos ciclos).
+- Liquidación/destino: se representa mediante el movimiento de destino y su coordinación, no mediante una entidad económica duplicada.
+
+Las transiciones permitidas, actores autorizados y precondiciones deben quedar especificados antes de habilitar comandos productivos.
+
+## 5. Políticas que NO se deben codificar por inferencia
+
+Permanecen abiertas en `especificacion/17-politicas-pendientes/politicas-pendientes.md`: diferencias inferiores/superiores, comisiones, redondeo, mínimos/máximos, límites acumulados, expiraciones, tasas especiales, movimientos no asociados, pagos de destino insuficientes/excesivos, cancelación/devolución tras depósito, requisitos de comprobantes, depósitos durante suspensión o ausencia de tasa y huecos entre tasas.
+
+M1.7 puede crear estructuras neutrales para conservar datos y trazabilidad, pero no debe asignar resultados automáticos ni valores por defecto que resuelvan esas políticas.
+
+## 6. Orden de implementación propuesto
+
+1. Catálogo tenant-scoped de monedas y pares, constraints y capacidades.
+2. Tasas versionadas con vigencia semiabierta y consulta determinista por instante.
+3. Operaciones: creación idempotente y estados iniciales, sin fijar una tasa definitiva antes del movimiento origen verificado.
+4. Movimientos: registro asociado/no asociado, asociación explícita y protección contra doble confirmación.
+5. Asociaciones de evidencias e incidencias, historial append-only.
+6. Cálculo autoritativo solo cuando las reglas aprobadas estén disponibles; mientras falten políticas, devolver estado explícito de pendiente en vez de inventar un importe final.
+
+## 7. Criterios de aceptación
+
+- Pruebas SQL en PostgreSQL 17 desde base limpia y pruebas Kotlin.
+- Aislamiento tenant en todas las claves foráneas, funciones y consultas.
+- Tests negativos de cross-tenant, idempotencia repetida/con payload distinto, concurrencia de confirmación, tasa en límites exactos de vigencia y ausencia de tasa.
+- Pruebas que demuestren que evidencia no confirma movimiento, movimiento no asociado es válido y movimiento confirmado no se sobrescribe.
+- Docker build verde.
+- Ningún secreto, service-role key ni credencial en cliente, Git o logs.
+- Ninguna migración se aplica a un proyecto Supabase remoto ni se despliega infraestructura desde CI.

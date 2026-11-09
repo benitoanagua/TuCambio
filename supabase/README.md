@@ -5,9 +5,7 @@
 
 ## Principio
 
-TuCambio adopta Supabase como plataforma backend integrada, no solo como hosting PostgreSQL. Cada servicio se usa donde aporta valor, pero no se duplica la lógica financiera ni se activa infraestructura sin un caso de uso.
-
-Postgres es el núcleo transaccional. Supabase Auth identifica usuarios. Las membresías y permisos de TuCambio autorizan acciones. Kotlin/Ktor ejecuta los casos de uso de negocio. RLS aplica aislamiento en profundidad.
+Supabase es la plataforma backend integrada, no solo hosting PostgreSQL. Postgres es el núcleo transaccional; Supabase Auth identifica usuarios; las membresías y permisos de TuCambio autorizan acciones; Kotlin/Ktor ejecuta los casos de uso de negocio; RLS aplica aislamiento en profundidad.
 
 ## Mapa de servicios
 
@@ -32,34 +30,37 @@ Postgres es el núcleo transaccional. Supabase Auth identifica usuarios. Las mem
 
 1. Supabase Auth mantiene la identidad; TuCambio no almacena contraseñas.
 2. `auth.users.id` referencia el perfil interno. La identidad no implica automáticamente pertenencia a un operador.
-3. Un usuario puede recibir invitaciones y tener membresías en varios tenants.
-4. Los permisos de negocio se modelan como capacidades (OPERAR, VERIFICAR, LIQUIDAR, GESTIONAR TASAS, GESTIONAR CONFIGURACIÓN, ADMINISTRAR); los roles son agrupaciones configurables.
-5. Ktor valida JWT (firma/JWKS, issuer, audience y expiración), obtiene el actor y consulta la membresía y sus permisos vigentes.
+3. Un usuario puede tener membresías en varios tenants.
+4. Los permisos de negocio se modelan como capacidades estables; los roles son agrupaciones configurables por tenant.
+5. Ktor valida JWT (firma/JWKS, issuer, audience y expiración), obtiene el actor y consulta membresía/capacidades vigentes.
 6. No usar `user_metadata` editable como fuente de autorización.
-7. RLS protege las tablas expuestas con default deny y tenant membership comprobada.
-8. MFA TOTP se recomienda para administradores y acciones sensibles; la exigencia se valida en backend/RLS, no solo en la interfaz.
-9. OAuth, SMS y SSO solo se habilitan cuando haya credenciales, dominio, redirect URLs, política y coste aprobados.
+7. RLS protege tablas expuestas con default deny y membresía comprobada.
+8. MFA para administradores y acciones sensibles se exige en backend/RLS, no solo en interfaz.
+9. OAuth, SMS y SSO solo se habilitan con credenciales, dominio, redirect URLs, política y coste aprobados.
 
-**M1.1 implementado en migración versionada:** perfiles, tenants, membresías, roles configurables, catálogo de capacidades, asignaciones, invitaciones y auditoría de seguridad. El detalle del contrato está en [IDENTITY.md](./IDENTITY.md). Las tablas tienen RLS habilitado. M1.1 dejó el acceso de clientes en default deny; M1.5 añade únicamente lecturas autenticadas con políticas por tenant y administración, sin DML desde el cliente. M1.6 añade el contrato de metadata y políticas de Storage para cargas pendientes y lecturas verificadas. La autorización de comandos financieros sigue en Ktor.
+**M1.1–M1.5 implementados en migraciones versionadas:** identidad multi-tenant, JWT Ktor, resolución de membresía/capacidades y políticas RLS de lectura.  
+**M1.6 implementado:** metadata y políticas Storage privadas, junto con endpoints Ktor para iniciar carga, verificar bytes/tamaño/firma MIME/SHA-256, finalizar y emitir URL de descarga temporal. La clave service-role permanece exclusivamente en Ktor y se usa después de autorización PostgreSQL. El detalle está en [IDENTITY.md](./IDENTITY.md) y [backend/README.md](../backend/README.md).
 
 ## Flujos críticos
 
 ### Comandos financieros
-Cliente → Ktor → autorización Auth/JWT + tenant/capacidad → transacción PostgreSQL → auditoría + outbox → commit.  
-El cliente nunca confirma una operación mediante una secuencia de escrituras directas a varias tablas.
+
+Cliente → Ktor → JWT + autorización tenant/capacidad → transacción PostgreSQL → auditoría + outbox → commit. El cliente nunca confirma una operación mediante escrituras directas a varias tablas.
 
 ### Evidencias
-Cliente → Ktor autoriza tenant/operación → Storage privado → validación de contenido → metadatos y hash en PostgreSQL → revisión humana/flujo de negocio.  
-Subir un comprobante no confirma el movimiento.
+
+Cliente → Ktor autoriza tenant → Storage privado → inspección de contenido → metadata/hash en PostgreSQL → asociación/revisión del flujo de negocio. Subir un comprobante no confirma el movimiento. M1.6 valida tamaño, firma de archivo y SHA-256; análisis antimalware y asociación al dominio se mantienen como trabajo pendiente antes de producción.
 
 ### Actualizaciones en vivo
-Postgres confirma el cambio → Realtime notifica/actualiza la vista → cliente recupera estado canónico.  
-Realtime no es fuente de verdad ni canal para secretos, comprobantes o datos bancarios completos.
+
+Postgres confirma el cambio → Realtime notifica/actualiza la vista → cliente recupera estado canónico. Realtime no es fuente de verdad ni canal para secretos, comprobantes o datos bancarios completos.
 
 ### Procesamiento asíncrono
+
 Transacción de negocio escribe outbox → worker/Queues procesa → reintentos idempotentes → estado y resultado auditados. Cron programa trabajos; no sustituye a una cola.
 
 ### Integraciones externas
+
 Webhook/Edge Function verifica firma, timestamp y deduplicación → registra evento/outbox → worker/backend procesa. Ninguna llamada externa bloquea la transacción financiera.
 
 ## Seguridad obligatoria
@@ -81,17 +82,25 @@ El plan Free sirve para desarrollo y pilotos de bajo riesgo, no como compromiso 
 
 ## Secuencia
 
-- [x] M1.1 Esquema PostgreSQL multi-tenant y modelo de membresías/capacidades (migración versionada y prueba de aislamiento entre tenants).
-- [x] M1.2 Ktor: validación de firma/JWKS, issuer, audience, expiración y UUID del actor; sin tenant/capacidades todavía.
-- [ ] M1.3 Supabase Auth: registro, login, logout, refresh, verificación y recuperación mediante flujos administrados por Auth (integración de cliente pendiente).
-- [x] M1.4 Ktor: resolución de membresía activa y capacidades vigentes desde PostgreSQL mediante función server-only; endpoint protegido de consulta de autorización.
-- [x] M1.5 RLS: políticas de lectura autenticada por tenant, helpers de membresía/capacidad y pruebas negativas de aislamiento.
-- [ ] M1.6 Storage: bucket privado, metadata, límites, funciones backend-only y políticas tenant-aware (PR en revisión; adaptador HTTP Ktor pendiente).
-- [ ] M1.7 Operaciones/movimientos/tasas con transacciones e idempotencia.
+- [x] M1.1 Esquema PostgreSQL multi-tenant y modelo de membresías/capacidades.
+- [x] M1.2 Ktor: validación de firma/JWKS, issuer, audience, expiración y UUID del actor.
+- [ ] M1.3 Supabase Auth cliente: registro, login, logout, refresh, verificación y recuperación (integración de cliente pendiente).
+- [x] M1.4 Ktor: resolución de membresía activa y capacidades vigentes desde PostgreSQL.
+- [x] M1.5 RLS: políticas de lectura autenticada por tenant, helpers y pruebas negativas de aislamiento.
+- [x] M1.6 Storage: bucket privado, metadata, límites, funciones backend-only, políticas tenant-aware y adaptador HTTP Ktor de carga/inspección/descarga.
+- [ ] M1.7 Dominio financiero: monedas/pares, tasas, operaciones y movimientos con transacciones e idempotencia. Contrato técnico inicial: [FINANCIAL_DOMAIN.md](./FINANCIAL_DOMAIN.md). No codificar políticas de negocio todavía abiertas.
 - [ ] M1.8 Realtime para vistas autorizadas.
 - [ ] M1.9 Outbox, Queues y worker.
 - [ ] M1.10 Cron, Vault y Edge Functions para integraciones.
-- [ ] M1.11 CI, observabilidad, backup/restore y control de costes.
+- [ ] M1.11 Observabilidad, backup/restore y control de costes.
+
+## Pendientes previos a producción
+
+- Análisis antimalware/antivirus y política de retención de evidencias.
+- Asociación de evidencias a operaciones/movimientos con auditoría.
+- Integración de ciclo de sesión del cliente con Supabase Auth (M1.3).
+- Validación administrada en un proyecto Supabase real, después de disponer de configuración y aprobación.
+- Provisionamiento de secretos, IAM, Cloud Run, backup/restore y monitorización; no automatizar ni ejecutar sin autorización operativa.
 
 ## Documentación oficial
 
