@@ -67,6 +67,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_financial_domain.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_financial_commands.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_movement_verification.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_evidence_review.sql
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
