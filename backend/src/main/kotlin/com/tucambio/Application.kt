@@ -216,6 +216,18 @@ fun Application.module(
                         financialCommands.associateMovement(actor, tenant, call.receive<AssociateExternalMovementRequest>(), key)
                     }
                 }
+                post("/api/v1/tenants/{tenantId}/operations/{operationId}/apply-rate") {
+                    val operationId = call.parameters["operationId"]
+                    if (operationId == null || runCatching { UUID.fromString(operationId) }.isFailure) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_operation_id"))
+                    } else if (financialCommands == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    } else {
+                        call.executeFinancialCommand { actor, tenant, key ->
+                            financialCommands.applyOperationRate(actor, tenant, operationId, key)
+                        }
+                    }
+                }
                 post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") {
                     val movementId = call.parameters["movementId"]
                     if (movementId == null || runCatching { UUID.fromString(movementId) }.isFailure) {
