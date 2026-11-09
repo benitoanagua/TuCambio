@@ -81,6 +81,7 @@ class PostgresTenantAccessRepository private constructor(private val dataSource:
                 minimumIdle = 0
                 connectionTimeout = 3_000
                 validationTimeout = 1_000
+                initializationFailTimeout = -1
                 poolName = "tucambio-tenant-authz"
             }
             return PostgresTenantAccessRepository(HikariDataSource(config))
