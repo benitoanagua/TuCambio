@@ -104,15 +104,15 @@ values (
   '{"mimetype":"image/png","size":2048}'::jsonb
 );
 
-do $
+do $$
 begin
   if (select count(*) from storage.objects) <> 0 then
     raise exception 'Pending evidence object is readable before backend verification';
   end if;
 end;
-$;
+$$;
 
-do $
+do $$
 begin
   begin
     insert into storage.objects (bucket_id, name, owner_id, metadata)
