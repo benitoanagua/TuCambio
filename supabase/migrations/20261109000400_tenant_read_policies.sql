@@ -49,8 +49,8 @@ as $$
   );
 $$;
 
-revoke all on function public.is_tenant_member(uuid) from public, anon;
-revoke all on function public.has_tenant_capability(uuid, text) from public, anon;
+revoke all on function public.is_tenant_member(uuid) from public, anon, authenticated;
+revoke all on function public.has_tenant_capability(uuid, text) from public, anon, authenticated;
 grant usage on schema auth to authenticated;
 grant execute on function public.is_tenant_member(uuid) to authenticated;
 grant execute on function public.has_tenant_capability(uuid, text) to authenticated;
@@ -67,7 +67,7 @@ revoke all on table
   public.tenant_invitations,
   public.tenant_invitation_roles,
   public.tenant_security_audit_events
-from anon;
+from anon, authenticated;
 
 grant select on table
   public.profiles,
