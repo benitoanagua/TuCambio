@@ -1,7 +1,7 @@
 # Esquema de identidad y autorización multi-tenant
 
-**Milestone:** M1.1  
-**Estado:** implementado como migración SQL; pendiente aplicar en un proyecto Supabase real.  
+**Milestone:** M1.1 / M1.4 / M1.5  
+**Estado:** implementado como migración SQL; pendiente aplicar y validar en un proyecto Supabase real.  
 **Migración:** `20261109000200_identity_multitenant_schema.sql`
 
 ## Modelo
@@ -47,7 +47,7 @@ Los roles son agrupaciones configurables por tenant; los códigos de capacidad s
 - RLS queda habilitado en todas las tablas del esquema.
 - No se crean políticas permisivas todavía. El comportamiento es **default deny**.
 - Se revocan privilegios de tabla de `anon` y `authenticated`.
-- El cliente no accede directamente a estas tablas hasta completar M1.3/M1.4 y sus pruebas negativas.
+- M1.5 concede únicamente SELECT a authenticated y lo filtra mediante políticas RLS. No se concede DML directo al cliente; las escrituras siguen en Ktor. La función de resolución M1.4 queda reservada al rol backend.
 - Ktor consultará la identidad validada y las membresías/roles vigentes. La selección de tenant solicitada por el cliente se valida contra esa membresía; nunca se acepta como autoridad.
 - Las credenciales administrativas de base de datos permanecen exclusivamente en el entorno servidor.
 - No hay triggers automáticos de perfil, invitación, timestamps o auditoría en esta migración. Los cambios de seguridad deben entrar por casos de uso explícitos de Ktor y registrar su evento en la misma transacción.
@@ -63,6 +63,15 @@ Los roles son agrupaciones configurables por tenant; los códigos de capacidad s
 - MFA obligatorio para administradores y operaciones sensibles.
 
 No se inventan estas políticas dentro de M1.1. Se cierran antes de exponer las tablas por Data API o habilitar flujos de alta reales.
+
+## Políticas RLS de lectura (M1.5)
+
+- `profiles`: cada usuario solo puede leer su propio perfil.
+- `tenants`, `tenant_memberships`, `tenant_roles`, `tenant_role_capabilities` y `membership_roles`: solo miembros activos de un tenant activo pueden leer filas de ese tenant.
+- `capabilities`: catálogo global de solo lectura para usuarios autenticados.
+- `tenant_invitations`, `tenant_invitation_roles` y `tenant_security_audit_events`: solo miembros con `tenant.administer` pueden leer estos datos.
+- Los helpers `is_tenant_member` y `has_tenant_capability` son `SECURITY DEFINER`, con `search_path` fijo, y solo ejecutables por `authenticated`; no se concede acceso anónimo.
+- `authenticated` recibe SELECT, pero no INSERT/UPDATE/DELETE/TRUNCATE. `anon` no recibe privilegios. No hay políticas de escritura.
 
 ## Pruebas
 
