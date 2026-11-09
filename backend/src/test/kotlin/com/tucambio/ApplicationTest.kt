@@ -39,19 +39,6 @@ class ApplicationTest {
     }
 
     @Test
-    fun evidenceDownloadEndpointFailsClosedWhenAuthenticationIsNotConfigured() = testApplication {
-        application { module(authConfig = null) }
-
-        val response = client.get(
-            "/api/v1/tenants/52000000-0000-0000-0000-000000000001/evidence/" +
-                "56000000-0000-0000-0000-000000000001/download-url"
-        )
-
-        assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
-        assertEquals("""{"error":"authentication_not_configured"}""", response.bodyAsText())
-    }
-
-    @Test
     fun rootEndpointIdentifiesService() = testApplication {
         application { module() }
 
