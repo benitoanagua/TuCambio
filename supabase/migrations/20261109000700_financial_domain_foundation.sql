@@ -74,7 +74,7 @@ create or replace function public.protect_currency_configuration_identity()
 returns trigger
 language plpgsql
 set search_path = pg_catalog
-as $
+as $$
 begin
   if tg_table_name = 'tenant_currencies' then
     if new.tenant_id is distinct from old.tenant_id
@@ -90,7 +90,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 create trigger tenant_currencies_identity_immutable
 before update on public.tenant_currencies
@@ -147,7 +147,7 @@ create or replace function public.protect_financial_operation_facts()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, public
-as $
+as $$
 declare
   rate_row public.currency_rates%rowtype;
 begin
@@ -186,7 +186,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 create trigger financial_operations_facts_immutable
 before update on public.financial_operations
@@ -197,7 +197,7 @@ create or replace function public.validate_financial_operation_pair()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, public
-as $
+as $$
 begin
   if not exists (
     select 1
@@ -222,7 +222,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 create trigger financial_operations_pair_validation
 before insert on public.financial_operations
@@ -260,7 +260,7 @@ create or replace function public.protect_confirmed_external_movement()
 returns trigger
 language plpgsql
 set search_path = pg_catalog
-as $
+as $$
 begin
   if old.status = 'CONFIRMED' then
     raise exception 'A confirmed external movement is immutable' using errcode = '55000';
@@ -270,7 +270,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 create trigger external_movements_confirmed_immutable
 before update or delete on public.external_movements
@@ -330,11 +330,11 @@ create or replace function public.reject_financial_link_mutation()
 returns trigger
 language plpgsql
 set search_path = pg_catalog
-as $
+as $$
 begin
   raise exception 'Financial evidence associations are append-only' using errcode = '55000';
 end;
-$;
+$$;
 
 create trigger evidence_financial_links_append_only
 before update or delete on public.evidence_financial_links
