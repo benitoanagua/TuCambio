@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "backend/**"
+      - "supabase/**"
       - ".github/workflows/backend-ci.yml"
   push:
     branches:
@@ -13,6 +14,7 @@ on:
       - migration/tu-pago-core-extraction
     paths:
       - "backend/**"
+      - "supabase/**"
       - ".github/workflows/backend-ci.yml"
 
 permissions:
@@ -24,11 +26,42 @@ concurrency:
 
 jobs:
   test-and-container:
-    name: Test and build container
+    name: Test backend, database migrations and container
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tucambio_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tucambio_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tucambio_test
+      PGPASSWORD: postgres
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Validate Supabase migrations on PostgreSQL
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
+          for migration in supabase/migrations/*.sql; do
+            echo "Applying $migration"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_identity_schema.sql
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
