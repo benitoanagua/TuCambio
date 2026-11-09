@@ -12,7 +12,6 @@ import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respond
 import io.ktor.server.request.receive
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -113,19 +112,14 @@ fun Application.module(
                 post("/api/v1/tenants/{tenantId}/evidence") {
                     val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
                     val tenantId = call.parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-                    val token = call.request.headers[HttpHeaders.Authorization]
-                        ?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }
-                        ?.substringAfter(' ')
                     if (tenantId == null) {
                         call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_tenant_id"))
-                    } else if (token.isNullOrBlank()) {
-                        call.respond(HttpStatusCode.Unauthorized, ErrorResponse("missing_access_token"))
                     } else if (evidenceWorkflow == null) {
                         call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_storage_not_configured"))
                     } else {
                         try {
                             val request = call.receive<CreateEvidenceRequest>()
-                            val grant = evidenceWorkflow.createUpload(actorId, tenantId, request.mimeType, request.sizeBytes, token)
+                            val grant = evidenceWorkflow.createUpload(actorId, tenantId, request.mimeType, request.sizeBytes)
                             call.respond(HttpStatusCode.Created, grant)
                         } catch (_: EvidenceValidationException) {
                             call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_evidence_declaration"))
