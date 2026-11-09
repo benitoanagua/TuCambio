@@ -2,6 +2,7 @@ package com.tucambio
 
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.auth.authenticate
 import io.ktor.server.auth.principal
@@ -19,6 +20,8 @@ import io.ktor.server.routing.routing
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.sql.SQLException
 import java.util.UUID
 
@@ -32,7 +35,8 @@ fun Application.module(
     authConfig: SupabaseAuthConfig? = SupabaseAuthConfig.fromEnvironment(),
     tenantAccessRepository: TenantAccessRepository? = null,
     evidenceRepository: EvidenceRepository? = null,
-    evidenceStorage: EvidenceObjectStorage? = null
+    evidenceStorage: EvidenceObjectStorage? = null,
+    financialCommandRepository: FinancialCommandRepository? = null
 ) {
     install(CallLogging)
     authConfig?.let(::installSupabaseJwtAuthentication)
@@ -78,6 +82,12 @@ fun Application.module(
             get("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/download-url") {
                 call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured"))
             }
+            post("/api/v1/tenants/{tenantId}/currencies") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            post("/api/v1/tenants/{tenantId}/currency-pairs") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            post("/api/v1/tenants/{tenantId}/currency-rates") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            post("/api/v1/tenants/{tenantId}/operations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            post("/api/v1/tenants/{tenantId}/movements") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            post("/api/v1/tenants/{tenantId}/movement-associations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
         } else {
             authenticate("supabase") {
                 get("/api/v1/me") {
@@ -163,6 +173,42 @@ fun Application.module(
                         }
                     }
                 }
+                post("/api/v1/tenants/{tenantId}/currencies") {
+                    if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                        financialCommands.createCurrency(actor, tenant, call.receive<CreateCurrencyRequest>(), key)
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/currency-pairs") {
+                    if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                        financialCommands.createCurrencyPair(actor, tenant, call.receive<CreateCurrencyPairRequest>(), key)
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/currency-rates") {
+                    if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                        financialCommands.createCurrencyRate(actor, tenant, call.receive<CreateCurrencyRateRequest>(), key)
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/operations") {
+                    if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                        financialCommands.createOperation(actor, tenant, call.receive<CreateFinancialOperationRequest>(), key)
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/movements") {
+                    if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                        financialCommands.createMovement(actor, tenant, call.receive<CreateExternalMovementRequest>(), key)
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/movement-associations") {
+                    if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
+                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                        financialCommands.associateMovement(actor, tenant, call.receive<AssociateExternalMovementRequest>(), key)
+                    }
+                }
                 get("/api/v1/tenants/{tenantId}/evidence/{evidenceId}/download-url") {
                     val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
                     val tenantId = call.parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
@@ -204,3 +250,50 @@ fun Application.module(
     val capabilities: List<String>
 )
 @Serializable data class ErrorResponse(val error: String)
+
+private suspend fun ApplicationCall.executeFinancialCommand(
+    service: FinancialCommandService,
+    command: (UUID, UUID, String) -> kotlinx.serialization.json.JsonObject
+) {
+    val tenantId = parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+    if (tenantId == null) {
+        respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_tenant_id"))
+        return
+    }
+    val key = request.headers["Idempotency-Key"]
+    if (key.isNullOrBlank() || key.length > 200) {
+        respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_idempotency_key"))
+        return
+    }
+    val actorId = runCatching {
+        UUID.fromString(requireNotNull(principal<JWTPrincipal>()).payload.subject)
+    }.getOrNull()
+    if (actorId == null) {
+        respond(HttpStatusCode.Unauthorized, ErrorResponse("invalid_actor"))
+        return
+    }
+    try {
+        val result = command(actorId, tenantId, key)
+        val resourceId = result["resourceId"]?.jsonPrimitive?.content
+        val replayed = result["replayed"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+        if (resourceId == null) {
+            respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_command_invalid_response"))
+        } else {
+            val code = result["code"]?.jsonPrimitive?.content
+            respond(if (replayed) HttpStatusCode.OK else HttpStatusCode.Created,
+                FinancialCommandResponse(resourceId, replayed, code))
+        }
+    } catch (e: FinancialCommandValidationException) {
+        respond(HttpStatusCode.BadRequest, ErrorResponse(e.errorCode))
+    } catch (e: SQLException) {
+        when (e.sqlState) {
+            "42501" -> respond(HttpStatusCode.Forbidden, ErrorResponse("tenant_access_denied"))
+            "23505" -> respond(HttpStatusCode.Conflict, ErrorResponse("financial_command_conflict"))
+            "23503" -> respond(HttpStatusCode.Conflict, ErrorResponse("financial_reference_conflict"))
+            "23514", "22023", "22003", "22P02" -> respond(HttpStatusCode.UnprocessableEntity, ErrorResponse("financial_command_invalid"))
+            else -> respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_command_unavailable"))
+        }
+    } catch (_: IllegalArgumentException) {
+        respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_financial_command"))
+    }
+}
