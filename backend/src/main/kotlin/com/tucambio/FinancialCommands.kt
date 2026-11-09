@@ -73,12 +73,14 @@ interface FinancialCommandRepository : AutoCloseable {
 }
 
 class PostgresFinancialCommandRepository private constructor(private val dataSource: DataSource) : FinancialCommandRepository {
-    override fun createCurrency(actorId: UUID, tenantId: UUID, request: CreateCurrencyRequest, key: String, hash: ByteArray) =
-        execute("select public.command_create_tenant_currency(?, ?, ?, ?, ?, ?, ?)", actorId, tenantId, key, hash) {
+    override fun createCurrency(actorId: UUID, tenantId: UUID, request: CreateCurrencyRequest, key: String, hash: ByteArray): JsonObject {
+        if (request.decimalPlaces !in 0..18) throw FinancialCommandValidationException("invalid_decimal_places")
+        return execute("select public.command_create_tenant_currency(?, ?, ?, ?, ?, ?, ?)", actorId, tenantId, key, hash) {
             setString(3, request.code.trim())
             setString(4, request.name.trim())
             setShort(5, request.decimalPlaces.toShort())
         }
+    }
 
     override fun createCurrencyPair(actorId: UUID, tenantId: UUID, request: CreateCurrencyPairRequest, key: String, hash: ByteArray) =
         execute("select public.command_create_currency_pair(?, ?, ?, ?, ?, ?)", actorId, tenantId, key, hash) {
