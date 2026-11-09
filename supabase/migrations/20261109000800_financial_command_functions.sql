@@ -15,7 +15,7 @@ create or replace function public.protect_currency_configuration_identity()
 returns trigger
 language plpgsql
 set search_path = pg_catalog
-as $
+as $$
 begin
   if tg_table_name = 'tenant_currencies' then
     if new.id is distinct from old.id
@@ -32,7 +32,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 alter table public.financial_domain_events
   drop constraint financial_domain_events_entity_type;
