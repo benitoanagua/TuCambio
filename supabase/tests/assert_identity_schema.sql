@@ -58,6 +58,23 @@ insert into public.tenant_roles (id, tenant_id, code, name) values
   ('40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'operator', 'Operator A'),
   ('40000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'operator', 'Operator B');
 
+do $
+begin
+  begin
+    insert into public.membership_roles (tenant_id, membership_id, role_id)
+    values (
+      '20000000-0000-0000-0000-000000000001',
+      '30000000-0000-0000-0000-000000000001',
+      '40000000-0000-0000-0000-000000000002'
+    );
+    raise exception 'Cross-tenant role assignment unexpectedly succeeded';
+  exception
+    when foreign_key_violation then
+      null;
+  end;
+end;
+$;
+
 insert into public.tenant_role_capabilities (tenant_id, role_id, capability_code) values
   ('20000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'operations.operate'),
   ('20000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000002', 'rates.manage');
