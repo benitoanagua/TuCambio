@@ -18,6 +18,7 @@ insert into public.tenant_currencies (
 ) values
   ('62000000-0000-0000-0000-000000000001', 'USD', 'US Dollar', 2, '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'),
   ('62000000-0000-0000-0000-000000000001', 'BOB', 'Boliviano', 2, '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'),
+  ('62000000-0000-0000-0000-000000000001', 'EUR', 'Euro', 2, '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'),
   ('62000000-0000-0000-0000-000000000002', 'USD', 'US Dollar', 2, '63000000-0000-0000-0000-000000000002', '61000000-0000-0000-0000-000000000002');
 
 insert into public.tenant_currency_pairs (
@@ -44,7 +45,7 @@ begin
     raise exception 'Financial domain tables expose direct privileges';
   end if;
 
-  if (select count(*) from public.tenant_currencies where tenant_id = '62000000-0000-0000-0000-000000000001') <> 2 then
+  if (select count(*) from public.tenant_currencies where tenant_id = '62000000-0000-0000-0000-000000000001') <> 3 then
     raise exception 'Tenant currency catalogue not persisted';
   end if;
 
@@ -55,7 +56,7 @@ begin
     ) values (
       '62000000-0000-0000-0000-000000000001',
       '64000000-0000-0000-0000-000000000001',
-      'BOB', 'USD', 10,
+      'USD', 'EUR', 10,
       '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
     );
     raise exception 'Operation with mismatched pair unexpectedly accepted';
@@ -63,15 +64,25 @@ begin
   end;
 
   begin
-    insert into public.tenant_currency_pairs (tenant_id, base_currency_code, quote_currency_code)
-    values ('62000000-0000-0000-0000-000000000001', 'USD', 'USD');
+    insert into public.tenant_currency_pairs (
+      tenant_id, base_currency_code, quote_currency_code,
+      created_by_membership_id, created_by_user_id
+    ) values (
+      '62000000-0000-0000-0000-000000000001', 'USD', 'USD',
+      '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
+    );
     raise exception 'Self-referential currency pair unexpectedly accepted';
   exception when check_violation then null;
   end;
 
   begin
-    insert into public.tenant_currency_pairs (tenant_id, base_currency_code, quote_currency_code)
-    values ('62000000-0000-0000-0000-000000000001', 'USD', 'EUR');
+    insert into public.tenant_currency_pairs (
+      tenant_id, base_currency_code, quote_currency_code,
+      created_by_membership_id, created_by_user_id
+    ) values (
+      '62000000-0000-0000-0000-000000000001', 'USD', 'GBP',
+      '63000000-0000-0000-0000-000000000001', '61000000-0000-0000-0000-000000000001'
+    );
     raise exception 'Pair with unconfigured tenant currency unexpectedly accepted';
   exception when foreign_key_violation then null;
   end;
@@ -154,7 +165,7 @@ set source_effective_at = '2026-11-01T10:45:00Z',
     applied_rate = 6.90
 where id = '66000000-0000-0000-0000-000000000001';
 
-do $
+do $$
 begin
   begin
     update public.financial_operations set applied_rate = 6.91
@@ -163,7 +174,7 @@ begin
   exception when object_not_in_prerequisite_state then null;
   end;
 end;
-$;
+$$;
 
 insert into public.external_movements (
   id, tenant_id, currency_code, amount, effective_at,
