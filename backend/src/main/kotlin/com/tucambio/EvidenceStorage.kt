@@ -332,6 +332,94 @@ class EvidenceWorkflowService(private val repository: EvidenceRepository, privat
     }
 }
 
+
+interface EvidenceReviewRepository : AutoCloseable {
+    fun review(
+        actorUserId: UUID,
+        tenantId: UUID,
+        evidenceId: UUID,
+        request: ReviewEvidenceRequest,
+        idempotencyKey: String,
+        requestHash: ByteArray
+    ): kotlinx.serialization.json.JsonObject
+    override fun close() {}
+}
+
+class PostgresEvidenceReviewRepository private constructor(private val dataSource: DataSource) : EvidenceReviewRepository {
+    override fun review(
+        actorUserId: UUID,
+        tenantId: UUID,
+        evidenceId: UUID,
+        request: ReviewEvidenceRequest,
+        idempotencyKey: String,
+        requestHash: ByteArray
+    ): kotlinx.serialization.json.JsonObject = dataSource.connection.use { connection ->
+        connection.prepareStatement(
+            "select public.command_review_tenant_evidence(?, ?, ?, ?, ?, ?, ?)"
+        ).use { statement ->
+            statement.setObject(1, actorUserId)
+            statement.setObject(2, tenantId)
+            statement.setObject(3, evidenceId)
+            statement.setString(4, request.targetStatus)
+            statement.setString(5, request.reason)
+            statement.setString(6, idempotencyKey)
+            statement.setBytes(7, requestHash)
+            statement.executeQuery().use { result ->
+                if (!result.next()) throw SQLException("Evidence review returned no result")
+                Json.parseToJsonElement(result.getString(1)).jsonObject
+            }
+        }
+    }
+
+    override fun close() { (dataSource as? AutoCloseable)?.close() }
+
+    companion object {
+        fun fromEnvironment(environment: Map<String, String> = System.getenv()): PostgresEvidenceReviewRepository? {
+            val rawUrl = environment["DATABASE_URL"]?.trim()?.takeIf(String::isNotEmpty) ?: return null
+            val uri = URI(rawUrl)
+            require(uri.scheme == "postgres" || uri.scheme == "postgresql") { "DATABASE_URL must use postgres:// or postgresql://" }
+            require(!uri.host.isNullOrBlank() && uri.rawUserInfo != null && !uri.path.isNullOrBlank() && uri.path != "/") {
+                "DATABASE_URL must include host, credentials and database"
+            }
+            val credentials = uri.rawUserInfo.split(":", limit = 2)
+            require(credentials.size == 2) { "DATABASE_URL must include username and password" }
+            val jdbcUrl = buildString {
+                append("jdbc:postgresql://").append(uri.host)
+                if (uri.port >= 0) append(":").append(uri.port)
+                append(uri.path)
+                if (!uri.rawQuery.isNullOrBlank()) append("?").append(uri.rawQuery)
+            }
+            val config = HikariConfig().apply {
+                this.jdbcUrl = jdbcUrl
+                username = java.net.URLDecoder.decode(credentials[0].replace("+", "%2B"), StandardCharsets.UTF_8)
+                password = java.net.URLDecoder.decode(credentials[1].replace("+", "%2B"), StandardCharsets.UTF_8)
+                maximumPoolSize = 5
+                minimumIdle = 0
+                connectionTimeout = 3_000
+                validationTimeout = 1_000
+                initializationFailTimeout = -1
+                poolName = "tucambio-evidence-review"
+            }
+            return PostgresEvidenceReviewRepository(HikariDataSource(config))
+        }
+    }
+}
+
+class EvidenceReviewService(private val repository: EvidenceReviewRepository) {
+    fun review(actor: UUID, tenant: UUID, evidence: UUID, request: ReviewEvidenceRequest, key: String): kotlinx.serialization.json.JsonObject {
+        val canonical = kotlinx.serialization.json.buildJsonObject {
+            put("evidenceId", evidence.toString())
+            put("targetStatus", request.targetStatus)
+            put("reason", request.reason)
+        }.toString()
+        val hash = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(StandardCharsets.UTF_8))
+        return repository.review(actor, tenant, evidence, request, key, hash)
+    }
+}
+
+@Serializable
+data class ReviewEvidenceRequest(val targetStatus: String, val reason: String? = null)
+
 @Serializable data class CreateEvidenceRequest(val mimeType: String, val sizeBytes: Long)
 @Serializable data class EvidenceUploadGrant(
     val evidenceId: String,

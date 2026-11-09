@@ -159,3 +159,26 @@ Debe generarse una:
 y pasar a revisión.
 
 ---
+
+
+## 15. Ciclo operativo de revisión
+
+La integridad técnica del archivo y su revisión de negocio son dimensiones independientes:
+
+- `status`: ciclo de almacenamiento (`pending`, `available`, `rejected`).
+- `review_status`: ciclo de revisión (`PRESENTADA`, `EN_REVISION`, `VALIDA`, `OBSERVADA`).
+
+Un archivo solo puede entrar a revisión cuando su carga fue completada y el backend verificó tamaño, firma MIME y SHA-256.
+
+Transiciones admitidas:
+
+```text
+PRESENTADA → EN_REVISION → VALIDA
+                         → OBSERVADA
+```
+
+Cada transición requiere `movements.verify`, se serializa bloqueando la fila de evidencia, es idempotente y agrega un evento inmutable con actor, instante, estado anterior/nuevo y motivo cuando corresponde. Una observación exige motivo. No se permite reabrir silenciosamente una evidencia observada: se presenta otra evidencia y se conserva la anterior.
+
+La revisión de evidencia no confirma ni rechaza un movimiento. La confirmación del hecho externo permanece en el ciclo independiente del movimiento.
+
+La asociación de una evidencia a una operación o movimiento es un vínculo histórico adicional; no cambia el archivo ni su estado de revisión. La misma evidencia no debe asociarse silenciosamente a hechos incompatibles.
