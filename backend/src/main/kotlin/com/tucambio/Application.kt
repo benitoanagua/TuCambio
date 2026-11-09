@@ -20,7 +20,6 @@ import io.ktor.server.routing.routing
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.sql.SQLException
 import java.util.UUID
@@ -181,7 +180,7 @@ fun Application.module(
                 }
                 post("/api/v1/tenants/{tenantId}/currencies") {
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
-                    else call.executeFinancialCommand(financialCommands) { actor, tenant, key ->
+                    else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.createCurrency(actor, tenant, call.receive<CreateCurrencyRequest>(), key)
                     }
                 }
@@ -258,7 +257,6 @@ fun Application.module(
 @Serializable data class ErrorResponse(val error: String)
 
 private suspend fun ApplicationCall.executeFinancialCommand(
-    service: FinancialCommandService,
     command: suspend (UUID, UUID, String) -> kotlinx.serialization.json.JsonObject
 ) {
     val tenantId = parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
