@@ -82,8 +82,16 @@ El plan Free sirve para desarrollo y pilotos de bajo riesgo, no como compromiso 
 ## Secuencia
 
 - [x] M1.1 Esquema PostgreSQL multi-tenant y modelo de membresías/capacidades (migración versionada y prueba de aislamiento entre tenants).
-- [ ] M1.2 Auth: registro, login, logout, refresh, verificación y recuperación.
-- [ ] M1.3 Ktor: validación JWT, identidad del actor y autorización.
+- [x] M1.2 Ktor: validación de firma/JWKS, issuer, audience, expiración y UUID del actor; sin tenant/capacidades todavía.
+- [ ] M1.3 Supabase Auth: registro, login, logout, refresh, verificación y recuperación mediante flujos administrados por Auth.
+- [ ] M1.4 Ktor: resolución de membresía activa y autorización por capacidades.
+- [ ] M1.5 RLS: políticas y pruebas negativas de aislamiento.
+- [ ] M1.6 Storage: metadatos, validación y autorización tenant-aware.
+- [ ] M1.7 Operaciones/movimientos/tasas con transacciones e idempotencia.
+- [ ] M1.8 Realtime para vistas autorizadas.
+- [ ] M1.9 Outbox, Queues y worker.
+- [ ] M1.10 Cron, Vault y Edge Functions para integraciones.
+- [ ] M1.11 CI, observabilidad, backup/restore y control de costes.
 - [ ] M1.4 RLS: políticas y pruebas negativas de aislamiento.
 - [ ] M1.5 Storage: metadatos, validación y autorización tenant-aware.
 - [ ] M1.6 Operaciones/movimientos/tasas con transacciones e idempotencia.
