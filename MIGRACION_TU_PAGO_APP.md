@@ -249,3 +249,58 @@ ACID aplica a transacciones ejecutadas dentro de PostgreSQL. No se debe afirmar 
 - Connecting to Postgres (direct connection y poolers): https://supabase.com/docs/guides/database/connecting-to-postgres
 - Securing your data / RLS: https://supabase.com/docs/guides/database/secure-data
 - Connection pooling and limits: https://supabase.com/docs/guides/database/connecting-to-postgres/connection-pooling
+
+
+## 10. Archivos y comprobantes: Supabase Storage (ADR-TC-002)
+
+**Estado:** Decisión adoptada para el diseño e implementación inicial de infraestructura como código.  
+**Fecha:** 2026-11-09
+
+### 10.1 Servicio y capa gratuita confirmados
+
+Supabase ofrece Supabase Storage como servicio administrado de objetos, integrado con PostgreSQL y políticas RLS. Según la tabla oficial de planes consultada el 9 de noviembre de 2026, el plan Free incluye:
+
+| Concepto | Cuota Free |
+|---|---:|
+| Almacenamiento de archivos | 1 GB |
+| Egress total | 5 GB |
+| Tamaño máximo por archivo | 50 MB |
+| Proyectos gratuitos activos | 2 por cuenta/organización según las reglas de elegibilidad |
+
+Las cuotas de almacenamiento y egress se contabilizan a nivel de organización y se agregan entre sus proyectos. El plan Free no debe considerarse una garantía de disponibilidad para producción: los proyectos con poca actividad pueden pausarse tras 7 días; además, el plan no incluye las mismas garantías/funciones operativas de los planes pagos. El límite de 50 MB es el máximo global permitido en Free, no una recomendación para los comprobantes de TuCambio.
+
+Referencias oficiales:
+- Planes y cuotas: https://supabase.com/pricing
+- Cuotas y facturación: https://supabase.com/docs/guides/platform/billing-faq
+- Precio/cupo de Storage: https://supabase.com/docs/guides/storage/pricing
+- Límites de carga: https://supabase.com/docs/guides/storage/uploads/file-limits
+- Buckets privados: https://supabase.com/docs/guides/storage/buckets/fundamentals
+- Control de acceso: https://supabase.com/docs/guides/storage/security/access-control
+- Pausa por inactividad: https://supabase.com/docs/guides/platform/free-project-pausing
+
+### 10.2 Decisión de uso
+
+- Supabase Storage será el almacén de objetos para comprobantes y evidencias; PostgreSQL seguirá siendo la fuente de verdad de metadatos, relaciones, estados, hash y auditoría.
+- Los archivos de operaciones se guardarán en el bucket privado `operation-evidence`; nunca en un bucket público.
+- La migración inicial crea el bucket privado con límite de 10 MiB por archivo y MIME permitidos: PDF, JPEG, PNG y WebP. Es un límite de aplicación deliberadamente menor al máximo del plan; podrá revisarse con métricas y requisitos reales.
+- No guardar binarios en columnas PostgreSQL ni confiar en nombres originales como identificadores.
+- La ruta de objeto debe ser opaca y generada por el servidor, con separación por tenant y operación; no incluir nombres, correos, números de cuenta ni otros datos personales.
+- El cliente no recibe `service_role`, claves secretas ni credenciales PostgreSQL.
+- El backend Kotlin/Ktor autoriza la operación y la pertenencia al tenant antes de emitir una URL firmada de carga/descarga de vida corta o ejecutar la transferencia del archivo.
+- La URL firmada es una credencial temporal: no registrarla en logs, analítica ni auditoría en texto completo; evitar persistirla.
+- Para descargas, preferir autorización del backend y URL firmada de corta duración. No hacer públicos los comprobantes.
+- Las políticas RLS de `storage.objects` deben vincularse a la tabla real de membresías/tenants cuando el esquema de identidad de TuCambio esté definido. No se crea ahora una política genérica basada en claims o rutas no verificadas. Hasta entonces, el acceso directo de clientes permanece denegado y las operaciones pasan por backend confiable.
+- Los registros de metadatos deben guardar como mínimo: tenant_id, operation_id, bucket_id, object_key, MIME detectado, tamaño, SHA-256, usuario que subió, fecha, estado de validación y fecha de eliminación lógica.
+- Validar contenido real del archivo, MIME detectado, tamaño, extensión permitida y malware antes de marcar una evidencia como válida. La extensión y el Content-Type enviados por el cliente no son prueba suficiente.
+- La eliminación de un objeto debe ser un flujo explícito y auditado, coordinado con el estado del registro de metadatos; no borrar evidencia financiera por una sustitución silenciosa.
+- Storage requiere backup/retención independiente de PostgreSQL. La recuperación de la base no restaura automáticamente los objetos. Definir exportación/replicación, retención y simulacros de restauración antes de producción.
+
+### 10.3 Criterios de aceptación
+
+- El bucket se crea reproduciblemente mediante migración versionada y queda privado.
+- La migración limita tamaño y tipos MIME a los valores definidos.
+- Ningún cliente puede listar, leer, sobrescribir o eliminar comprobantes de otro tenant.
+- Ninguna clave administrativa aparece en apps móviles/web, repositorio ni logs.
+- Las URLs firmadas expiran y no sustituyen la autorización del caso de uso.
+- La base conserva metadatos, hash y auditoría; los objetos tienen estrategia independiente de respaldo y restauración.
+- El plan Free solo se usa para desarrollo, pruebas o piloto de bajo riesgo. Antes de producción se revisan cuota, egress, pausa, backups, RPO/RTO y costo del plan elegido.
