@@ -200,6 +200,7 @@ create policy operation_evidence_upload_pending_only
         and e.object_path = storage.objects.name
         and e.status = 'pending'
         and e.created_by_user_id = auth.uid()
+        and storage.objects.owner_id = auth.uid()::text
         and public.has_tenant_capability(e.tenant_id, 'operations.operate')
         and storage.objects.metadata ->> 'mimetype' = e.mime_type
         and case
