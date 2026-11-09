@@ -23,7 +23,7 @@ class EvidenceWorkflowTest {
     )
 
     @Test
-    fun uploadGrantUsesBackendCreatedPathAndActorToken() {
+    fun uploadGrantUsesBackendCreatedPathAndServerSigning() {
         val repository = FakeEvidenceRepository(record)
         val storage = FakeEvidenceStorage()
         val service = EvidenceWorkflowService(repository, storage)
