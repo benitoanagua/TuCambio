@@ -30,7 +30,7 @@ insert into public.membership_roles (tenant_id, membership_id, role_id) values
 
 set local role tucambio_backend;
 
-do $
+do $$
 declare
   v_first jsonb;
   v_replay jsonb;
@@ -112,11 +112,11 @@ begin
 
   if not v_tenant_b_denied then raise exception 'Cross-tenant command was not denied'; end if;
 end;
-$;
+$$;
 
 reset role;
 
-do $
+do $$
 begin
   if (select count(*) from public.tenant_currencies
       where tenant_id = '69000000-0000-0000-0000-000000000001') <> 2 then
@@ -139,6 +139,6 @@ begin
     raise exception 'Each successful financial command must append one domain event';
   end if;
 end;
-$;
+$$;
 
 rollback;
