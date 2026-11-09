@@ -94,7 +94,6 @@ fun Application.module(
             post("/api/v1/tenants/{tenantId}/movements") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             post("/api/v1/tenants/{tenantId}/movement-associations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
-            post("/api/v1/tenants/{tenantId}/operations/{operationId}/apply-rate") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
         } else {
             authenticate("supabase") {
                 get("/api/v1/me") {
@@ -214,18 +213,6 @@ fun Application.module(
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
                     else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.associateMovement(actor, tenant, call.receive<AssociateExternalMovementRequest>(), key)
-                    }
-                }
-                post("/api/v1/tenants/{tenantId}/operations/{operationId}/apply-rate") {
-                    val operationId = call.parameters["operationId"]
-                    if (operationId == null || runCatching { UUID.fromString(operationId) }.isFailure) {
-                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_operation_id"))
-                    } else if (financialCommands == null) {
-                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
-                    } else {
-                        call.executeFinancialCommand { actor, tenant, key ->
-                            financialCommands.applyOperationRate(actor, tenant, operationId, key)
-                        }
                     }
                 }
                 post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") {
