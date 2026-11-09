@@ -28,7 +28,7 @@ class EvidenceWorkflowTest {
         val storage = FakeEvidenceStorage()
         val service = EvidenceWorkflowService(repository, storage)
 
-        val grant = service.createUpload(actor, tenant, "image/png", 8, "validated-user-jwt")
+        val grant = service.createUpload(actor, tenant, "image/png", 8)
 
         assertTrue(runCatching { UUID.fromString(grant.evidenceId) }.isSuccess)
         assertEquals(repository.lastCreatedId.toString(), grant.evidenceId)
@@ -37,7 +37,6 @@ class EvidenceWorkflowTest {
         assertEquals("PUT", grant.uploadMethod)
         assertEquals("https://storage.example/upload/signed", grant.uploadUrl)
         assertEquals(record.objectPath, storage.lastSignedUploadPath)
-        assertEquals("validated-user-jwt", storage.lastActorToken)
     }
 
     @Test
@@ -46,10 +45,10 @@ class EvidenceWorkflowTest {
         val service = EvidenceWorkflowService(repository, FakeEvidenceStorage())
 
         assertFailsWith<EvidenceValidationException> {
-            service.createUpload(actor, tenant, "text/plain", 8, "jwt")
+            service.createUpload(actor, tenant, "text/plain", 8)
         }
         assertFailsWith<EvidenceValidationException> {
-            service.createUpload(actor, tenant, "image/png", 10L * 1024 * 1024 + 1, "jwt")
+            service.createUpload(actor, tenant, "image/png", 10L * 1024 * 1024 + 1)
         }
         assertEquals(0, repository.createdCount)
     }
@@ -146,13 +145,11 @@ class EvidenceWorkflowTest {
         private val downloadedBytes: ByteArray = byteArrayOf()
     ) : EvidenceObjectStorage {
         var lastSignedUploadPath: String? = null
-        var lastActorToken: String? = null
         var lastDownloadedPath: String? = null
         var lastSignedDownloadPath: String? = null
 
-        override fun createSignedUploadUrl(objectPath: String, actorAccessToken: String): String {
+        override fun createSignedUploadUrl(objectPath: String): String {
             lastSignedUploadPath = objectPath
-            lastActorToken = actorAccessToken
             return "https://storage.example/upload/signed"
         }
 
