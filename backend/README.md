@@ -35,6 +35,14 @@ El servidor escucha en `0.0.0.0:8080` por defecto. El puerto puede cambiarse con
 
 **Importante:** mientras PostgreSQL, Auth y Storage no estén conectados, readiness solo confirma que Ktor terminó de inicializar. No afirma que dependencias externas estén disponibles.
 
+## Supabase Auth y contexto de identidad
+
+Cuando SUPABASE_URL está configurada, Ktor valida Bearer access tokens usando el JWKS público de `/auth/v1/.well-known/jwks.json`, issuer `/auth/v1`, audience `authenticated` (configurable), expiración y firma. El proveedor JWKS mantiene caché y límite de solicitudes para no consultar Auth en cada request.
+
+`GET /api/v1/me` devuelve únicamente el UUID del sujeto autenticado. Se rechazan sujetos que no sean UUID, tokens con rol distinto de `authenticated` y sesiones anónimas. Sin SUPABASE_URL, el endpoint responde 503; el resto del servidor y los health checks siguen disponibles.
+
+Esta etapa no implementa registro/login/refresh/logout ni recuperación de contraseña: esos flujos deben delegarse a Supabase Auth desde un cliente o integrarse después mediante un contrato explícito. Tampoco resuelve tenant ni capacidades. El claim `user_metadata` y otros datos editables del token nunca autorizan acciones de negocio. La membresía activa y las capacidades deberán consultarse en PostgreSQL antes de habilitar endpoints de dominio.
+
 ## Pruebas y distribución
 
 ```bash
@@ -55,7 +63,7 @@ El contenedor ejecuta como usuario no privilegiado y recibe el puerto mediante l
 
 ## Configuración y secretos
 
-No hay credenciales de Supabase ni conexión PostgreSQL en esta primera iteración. Se incorporarán junto con el esquema, Auth/JWT y el pool de conexiones, usando variables de entorno/Secret Manager. No se deben añadir claves service-role, contraseñas SQL ni secretos al repositorio, a la imagen o al cliente.
+La verificación JWT se configura con `SUPABASE_URL` y `SUPABASE_JWT_AUDIENCE`. No se almacena ni se necesita una clave service-role para verificar firmas asimétricas mediante JWKS. Las credenciales administrativas de PostgreSQL y cualquier clave secreta permanecen fuera del repositorio, de la imagen y del cliente.
 
 ## Despliegue
 
