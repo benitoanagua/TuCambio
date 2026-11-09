@@ -48,7 +48,7 @@ for each row execute function public.reject_evidence_review_event_mutation();
 
 alter table public.evidence_review_events enable row level security;
 revoke all on table public.evidence_review_events from public, anon, authenticated, tucambio_backend;
-revoke all on table public.tenant_evidence from public, anon, authenticated, tucambio_backend;
+revoke insert, update, delete on table public.tenant_evidence from public, anon, authenticated, tucambio_backend;
 
 create or replace function public.command_review_tenant_evidence(
   p_actor_user_id uuid,
