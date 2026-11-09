@@ -40,7 +40,7 @@ Postgres es el núcleo transaccional. Supabase Auth identifica usuarios. Las mem
 8. MFA TOTP se recomienda para administradores y acciones sensibles; la exigencia se valida en backend/RLS, no solo en la interfaz.
 9. OAuth, SMS y SSO solo se habilitan cuando haya credenciales, dominio, redirect URLs, política y coste aprobados.
 
-**Pendiente antes del SQL de Auth:** el esquema canónico de tenants, perfiles, membresías, invitaciones y capacidades debe diseñarse junto con M1. No se crean triggers ni políticas RLS genéricas contra tablas que todavía no existen.
+**M1.1 implementado en migración versionada:** perfiles, tenants, membresías, roles configurables, catálogo de capacidades, asignaciones, invitaciones y auditoría de seguridad. El detalle del contrato está en [IDENTITY.md](./IDENTITY.md). Las tablas tienen RLS habilitado y no conceden acceso a `anon` ni `authenticated`: el estado inicial es default deny. Las políticas específicas y sus pruebas negativas se incorporan en M1.3/M1.4; no se habilita acceso directo de clientes todavía.
 
 ## Flujos críticos
 
@@ -81,7 +81,7 @@ El plan Free sirve para desarrollo y pilotos de bajo riesgo, no como compromiso 
 
 ## Secuencia
 
-- [ ] M1.1 Esquema PostgreSQL multi-tenant y modelo de membresías/capacidades.
+- [x] M1.1 Esquema PostgreSQL multi-tenant y modelo de membresías/capacidades (migración versionada y prueba de aislamiento entre tenants).
 - [ ] M1.2 Auth: registro, login, logout, refresh, verificación y recuperación.
 - [ ] M1.3 Ktor: validación JWT, identidad del actor y autorización.
 - [ ] M1.4 RLS: políticas y pruebas negativas de aislamiento.
