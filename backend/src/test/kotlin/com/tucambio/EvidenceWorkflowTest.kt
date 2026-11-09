@@ -124,7 +124,7 @@ class EvidenceWorkflowTest {
             lastCreatedId = evidenceId
             return record.copy(
                 id = evidenceId,
-                objectPath = "$tenant/$evidenceId",
+                objectPath = "$tenantId/$evidenceId",
                 mimeType = mimeType,
                 expectedSizeBytes = expectedSizeBytes
             )
