@@ -212,6 +212,6 @@ begin
   end;
   if not denied then raise exception 'Cross-tenant actor unexpectedly read currency rates'; end if;
 end;
-$;
+$$;
 
 rollback;
