@@ -135,3 +135,15 @@ Al pasar a `CONFIRMED` un movimiento asociado a una operación con rol `ORIGIN`,
 La confirmación del movimiento externo no se revierte por falta de tasa. En ese caso se conserva el instante efectivo, se deja la tasa sin asignar y se registra `OPERATION_SOURCE_RATE_NOT_FOUND`. Si la moneda del movimiento no coincide con la moneda origen declarada en la operación, no se asigna tasa y se registra `OPERATION_SOURCE_CURRENCY_MISMATCH`. Movimientos sin asociación ORIGIN no disparan resolución de tasa.
 
 Esta resolución no determina importes finales, comisiones, redondeos ni transiciones de liquidación. Las políticas P01–P22 permanecen fuera de este comando.
+
+
+## 10. Snapshot del importe de origen verificado (M1.8.4)
+
+Al confirmar un movimiento asociado con rol `ORIGIN`, si la moneda coincide con la moneda origen de la operación, PostgreSQL conserva en la operación:
+- `verified_source_movement_id`: movimiento externo confirmado que respalda el dato;
+- `verified_source_amount`: copia exacta del importe registrado en ese movimiento;
+- `source_effective_at`: instante efectivo del mismo movimiento.
+
+El snapshot se conserva incluso si no existe una tasa vigente. Si la moneda no coincide, no se copia el importe ni se aplica una tasa. La base de datos comprueba que el movimiento esté confirmado, asociado como `ORIGIN`, pertenezca al mismo tenant y coincida en moneda, importe e instante. Una vez asignado, el snapshot es inmutable.
+
+Este dato no sustituye `requested_amount`: ambos pueden diferir y la diferencia no se corrige automáticamente. Tampoco constituye el importe calculado de destino. El cálculo final permanece pendiente de la política de redondeo P04 y de las políticas económicas aplicables; esta migración no inventa ni congela esas decisiones.
