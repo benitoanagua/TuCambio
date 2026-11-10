@@ -270,6 +270,6 @@ begin
   end;
   if not denied then raise exception 'Invalid financial event entity type unexpectedly accepted'; end if;
 end;
-$;
+$$;
 
 rollback;
