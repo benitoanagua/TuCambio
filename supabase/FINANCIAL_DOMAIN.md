@@ -105,3 +105,19 @@ M1.7 puede crear estructuras neutrales para conservar datos y trazabilidad, pero
 - Docker build verde.
 - Ningún secreto, service-role key ni credencial en cliente, Git o logs.
 - Ninguna migración se aplica a un proyecto Supabase remoto ni se despliega infraestructura desde CI.
+
+
+## 8. Consultas financieras de lectura (M1.9.1)
+
+Las primeras consultas de lectura se exponen como funciones PostgreSQL SECURITY DEFINER de solo lectura, invocables exclusivamente por `tucambio_backend`. No se concede `SELECT` directo sobre las tablas financieras.
+
+- `financial.read` es la capacidad explícita requerida para consultar información financiera dentro del tenant.
+- La autorización se vuelve a resolver en PostgreSQL con actor y tenant; el identificador del tenant recibido no concede acceso por sí mismo.
+- `query_financial_operations` lista operaciones con nombres y precisión de las monedas origen/destino.
+- `query_external_movements` lista movimientos con metadatos de moneda y, cuando existe, operación/rol de asociación.
+- Ambas consultas aceptan filtro exacto por estado y paginación por `page_size` (1–100) y `offset` (0–10000).
+- El orden es determinista: `created_at DESC, id DESC`. La respuesta incluye `items`, `total`, `pageSize` y `offset`.
+- Los filtros no alteran estados ni ejecutan comandos. No se calculan saldos, tasas aplicadas ni importes finales.
+- La suite SQL verifica privilegios, autorización cross-tenant, metadatos y rechazo de ventanas de paginación fuera de límites.
+
+La capacidad debe asignarse explícitamente a los roles que deban consultar finanzas; no se infiere de `operations.operate`, `movements.verify` ni de la administración del tenant.
