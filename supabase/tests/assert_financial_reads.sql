@@ -69,6 +69,14 @@ insert into public.external_movements (
   ('77000000-0000-0000-0000-000000000002', '72000000-0000-0000-0000-000000000001', 'USD', 200, '2026-11-01T11:00:00Z', 'CONFIRMED', '73000000-0000-0000-0000-000000000001', '71000000-0000-0000-0000-000000000001', '2026-11-01T11:00:00Z'),
   ('77000000-0000-0000-0000-000000000003', '72000000-0000-0000-0000-000000000002', 'USD', 300, '2026-11-01T12:00:00Z', 'DECLARED', '73000000-0000-0000-0000-000000000002', '71000000-0000-0000-0000-000000000002', '2026-11-01T12:00:00Z');
 
+insert into public.financial_domain_events (
+  id, tenant_id, actor_membership_id, actor_user_id, entity_type, entity_id, event_type, payload, occurred_at
+) values
+  ('79000000-0000-0000-0000-000000000001', '72000000-0000-0000-0000-000000000001', '73000000-0000-0000-0000-000000000001', '71000000-0000-0000-0000-000000000001', 'MOVEMENT', '77000000-0000-0000-0000-000000000001', 'MOVEMENT_DECLARED', '{"internal":"must_not_be_exposed"}', '2026-11-01T10:00:00Z'),
+  ('79000000-0000-0000-0000-000000000002', '72000000-0000-0000-0000-000000000001', '73000000-0000-0000-0000-000000000001', '71000000-0000-0000-0000-000000000001', 'MOVEMENT', '77000000-0000-0000-0000-000000000002', 'MOVEMENT_CONFIRMED', '{"status":"CONFIRMED"}', '2026-11-01T11:00:00Z'),
+  ('79000000-0000-0000-0000-000000000003', '72000000-0000-0000-0000-000000000002', '73000000-0000-0000-0000-000000000002', '71000000-0000-0000-0000-000000000002', 'MOVEMENT', '77000000-0000-0000-0000-000000000003', 'MOVEMENT_DECLARED', '{}', '2026-11-01T12:00:00Z');
+
+
 do $$
 declare
   result jsonb;
@@ -77,13 +85,16 @@ begin
   if not has_function_privilege('tucambio_backend', 'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
      or not has_function_privilege('tucambio_backend', 'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE')
      or not has_function_privilege('tucambio_backend', 'public.query_currency_rates(uuid,uuid,uuid,integer,integer)', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.query_currency_rates(uuid,uuid,uuid,integer,integer)', 'EXECUTE') then
+     or not has_function_privilege('tucambio_backend', 'public.query_financial_domain_events(uuid,uuid,text,uuid,integer,integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.query_currency_rates(uuid,uuid,uuid,integer,integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.query_financial_domain_events(uuid,uuid,text,uuid,integer,integer)', 'EXECUTE') then
     raise exception 'Backend role must execute both financial read functions';
   end if;
   if has_function_privilege('authenticated', 'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
      or has_function_privilege('anon', 'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE')
      or has_table_privilege('tucambio_backend', 'public.financial_operations', 'SELECT')
-     or has_table_privilege('tucambio_backend', 'public.external_movements', 'SELECT') then
+     or has_table_privilege('tucambio_backend', 'public.external_movements', 'SELECT')
+     or has_table_privilege('tucambio_backend', 'public.financial_domain_events', 'SELECT') then
     raise exception 'Financial read functions or tables expose excessive privileges';
   end if;
 
@@ -211,7 +222,54 @@ begin
     denied := true;
   end;
   if not denied then raise exception 'Cross-tenant actor unexpectedly read currency rates'; end if;
+
+  result := public.query_financial_domain_events(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000001', null, null, 100, 0
+  );
+  if (result->>'total')::integer <> 2 or jsonb_array_length(result->'items') <> 2 then
+    raise exception 'Financial event history did not remain tenant-scoped';
+  end if;
+  if result->'items'->0->>'id' <> '79000000-0000-0000-0000-000000000002'
+     or result->'items'->1->>'id' <> '79000000-0000-0000-0000-000000000001' then
+    raise exception 'Financial event ordering is not deterministic';
+  end if;
+  if result->'items'->0 ? 'payload' or result->'items'->0 ? 'actor_membership_id' then
+    raise exception 'Audit read model exposed internal payload or membership identifiers';
+  end if;
+
+  result := public.query_financial_domain_events(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000001', 'MOVEMENT',
+    '77000000-0000-0000-0000-000000000001', 25, 0
+  );
+  if (result->>'total')::integer <> 1
+     or result->'items'->0->>'event_type' <> 'MOVEMENT_DECLARED' then
+    raise exception 'Financial event entity filters are incorrect';
+  end if;
+
+  denied := false;
+  begin
+    perform public.query_financial_domain_events(
+      '71000000-0000-0000-0000-000000000002',
+      '72000000-0000-0000-0000-000000000001', null, null, 25, 0
+    );
+  exception when insufficient_privilege then
+    denied := true;
+  end;
+  if not denied then raise exception 'Cross-tenant actor unexpectedly read financial events'; end if;
+
+  denied := false;
+  begin
+    perform public.query_financial_domain_events(
+      '71000000-0000-0000-0000-000000000001',
+      '72000000-0000-0000-0000-000000000001', 'INVALID', null, 25, 0
+    );
+  exception when invalid_parameter_value then
+    denied := true;
+  end;
+  if not denied then raise exception 'Invalid financial event entity type unexpectedly accepted'; end if;
 end;
-$$;
+$;
 
 rollback;
