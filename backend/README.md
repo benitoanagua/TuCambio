@@ -86,7 +86,7 @@ CI valida migraciones en PostgreSQL 17, ejecuta pruebas Kotlin y construye la im
 
 La clave `SUPABASE_SERVICE_ROLE_KEY` omite las políticas RLS de Storage. Su uso está confinado al backend después de que el caso de uso y la función PostgreSQL hayan autorizado el actor y la ruta. Nunca debe enviarse a apps, registrarse en logs ni incluirse en respuestas. Las URLs firmadas también son credenciales temporales: no registrarlas y no almacenarlas más allá de la operación.
 
-La inspección actual verifica tamaño, firma de archivo y SHA-256; todavía no realiza análisis antivirus/antimalware, extracción de contenido ni asociación con una entidad de operación financiera. Esas tareas deben completarse antes de usar evidencias en procesos financieros productivos.
+La inspección actual verifica tamaño, firma de archivo y SHA-256; todavía no realiza análisis antivirus/antimalware ni extracción de contenido. La asociación de evidencias a operaciones y movimientos está implementada por separado y no sustituye la revisión documental ni la verificación del hecho externo.
 
 ## Comandos financieros (M1.7.3)
 
@@ -157,3 +157,14 @@ La evidencia debe existir en el mismo tenant y tener integridad de almacenamient
 Una evidencia puede documentar una operación y un movimiento relacionado. No puede vincularse a dos movimientos distintos, evitando su reutilización silenciosa para respaldar hechos externos incompatibles. Las asociaciones son append-only y generan eventos de auditoría. Los reintentos con la misma clave y contenido son idempotentes.
 
 La asociación no modifica `status`, `review_status`, ni el estado del movimiento. Vincular un comprobante no lo valida ni confirma un movimiento. La revisión documental y la verificación del hecho externo siguen siendo procesos separados.
+
+
+## Aplicación de tasa por movimiento de origen (M1.8.2)
+
+Al confirmar un movimiento asociado con rol `ORIGIN`, PostgreSQL determina la tasa usando exclusivamente el `effective_at` del movimiento externo confirmado y la vigencia semiabierta `[valid_from, valid_until)`. No usa la hora de creación de la operación ni la hora del dispositivo.
+
+La dirección se resuelve respecto al par configurado: si la moneda entregada es la moneda base, se aplica `buy_rate` (el operador compra la moneda base); si es la moneda cotizada, se aplica `sell_rate` (el operador vende la moneda base). La tasa, su identificador y el instante de origen quedan fijados de forma inmutable en la operación y se registra un evento de auditoría en la misma transacción que confirma el movimiento.
+
+La confirmación del movimiento no depende de que exista una tasa. Si no hay una tasa vigente, el movimiento se confirma, la operación conserva el instante efectivo de origen, la tasa permanece sin asignar y se registra `OPERATION_SOURCE_RATE_NOT_FOUND`; no se inventa ni extrapola una tasa. Si la moneda del movimiento no coincide con la moneda origen de la operación, no se aplica tasa y se registra una incidencia de auditoría por discrepancia.
+
+Esta etapa **no calcula el importe final**, no aplica comisiones ni redondeo, y no inicia la liquidación. Esas reglas siguen sujetas a las políticas pendientes de la especificación.
