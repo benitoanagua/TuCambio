@@ -110,6 +110,13 @@ begin
     raise exception 'Financial operations ordering is not deterministic';
   end if;
 
+  if not (result->'items'->0 ? 'verified_source_movement_id')
+     or not (result->'items'->0 ? 'verified_source_amount')
+     or result->'items'->0->'verified_source_movement_id' <> 'null'::jsonb
+     or result->'items'->0->'verified_source_amount' <> 'null'::jsonb then
+    raise exception 'Financial operation read model must expose nullable verified source snapshot fields';
+  end if;
+
   result := public.query_financial_operations(
     '71000000-0000-0000-0000-000000000001',
     '72000000-0000-0000-0000-000000000001', 'PENDING', 1, 0
