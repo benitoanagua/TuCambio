@@ -121,3 +121,17 @@ Las primeras consultas de lectura se exponen como funciones PostgreSQL SECURITY 
 - La suite SQL verifica privilegios, autorización cross-tenant, metadatos y rechazo de ventanas de paginación fuera de límites.
 
 La capacidad debe asignarse explícitamente a los roles que deban consultar finanzas; no se infiere de `operations.operate`, `movements.verify` ni de la administración del tenant.
+
+
+## 9. Resolución de tasa desde el movimiento de origen (M1.8.2)
+
+Al pasar a `CONFIRMED` un movimiento asociado a una operación con rol `ORIGIN`, el comando de verificación:
+- bloquea el movimiento y la operación en la misma transacción;
+- toma `external_movements.effective_at` como instante de referencia;
+- busca una tasa del mismo tenant y par cuya vigencia semiabierta `[valid_from, valid_until)` contenga ese instante;
+- selecciona `buy_rate` cuando el cliente entrega la moneda base (el operador compra la moneda base) y `sell_rate` cuando entrega la moneda cotizada (el operador vende la moneda base);
+- fija `source_effective_at`, `applied_rate_id` y `applied_rate` una sola vez y registra el evento de operación dentro de la misma transacción.
+
+La confirmación del movimiento externo no se revierte por falta de tasa. En ese caso se conserva el instante efectivo, se deja la tasa sin asignar y se registra `OPERATION_SOURCE_RATE_NOT_FOUND`. Si la moneda del movimiento no coincide con la moneda origen declarada en la operación, no se asigna tasa y se registra `OPERATION_SOURCE_CURRENCY_MISMATCH`. Movimientos sin asociación ORIGIN no disparan resolución de tasa.
+
+Esta resolución no determina importes finales, comisiones, redondeos ni transiciones de liquidación. Las políticas P01–P22 permanecen fuera de este comando.
