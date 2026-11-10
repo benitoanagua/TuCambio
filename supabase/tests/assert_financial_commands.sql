@@ -21,7 +21,7 @@ select '69000000-0000-0000-0000-000000000001',
        '6b000000-0000-0000-0000-000000000001',
        c.code
 from public.capabilities c
-where c.code in ('settings.manage', 'rates.manage', 'operations.operate', 'movements.verify');
+where c.code in ('settings.manage', 'rates.manage', 'operations.operate', 'movements.verify', 'financial.read');
 
 insert into public.membership_roles (tenant_id, membership_id, role_id) values
   ('69000000-0000-0000-0000-000000000001',
@@ -43,6 +43,10 @@ declare
   v_movement jsonb;
   v_association jsonb;
   v_tenant_b_denied boolean := false;
+  v_operations_page jsonb;
+  v_movements_page jsonb;
+  v_read_denied boolean := false;
+  v_bad_page boolean := false;
 begin
   if has_function_privilege('anon',
        'public.command_create_financial_operation(uuid,uuid,uuid,text,text,numeric,text,bytea)', 'EXECUTE')
@@ -111,6 +115,60 @@ begin
   end;
 
   if not v_tenant_b_denied then raise exception 'Cross-tenant command was not denied'; end if;
+
+  if has_function_privilege('authenticated',
+       'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
+     or has_function_privilege('anon',
+       'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE') then
+    raise exception 'Financial read functions must not be executable by client roles';
+  end if;
+  if not has_function_privilege('tucambio_backend',
+       'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
+     or not has_function_privilege('tucambio_backend',
+       'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE') then
+    raise exception 'Backend role must be able to execute financial read functions';
+  end if;
+
+  v_operations_page := public.query_financial_operations(
+    '68000000-0000-0000-0000-000000000001',
+    '69000000-0000-0000-0000-000000000001', null, 25, 0
+  );
+  if (v_operations_page->>'total')::integer <> 1
+     or jsonb_array_length(v_operations_page->'items') <> 1
+     or v_operations_page->'items'->0->>'source_currency_name' <> 'US Dollar'
+     or v_operations_page->'items'->0->>'target_currency_name' <> 'Boliviano' then
+    raise exception 'Financial operation query must return tenant-scoped rows and currency metadata';
+  end if;
+
+  v_movements_page := public.query_external_movements(
+    '68000000-0000-0000-0000-000000000001',
+    '69000000-0000-0000-0000-000000000001', 'DECLARED', 25, 0
+  );
+  if (v_movements_page->>'total')::integer <> 1
+     or jsonb_array_length(v_movements_page->'items') <> 1
+     or v_movements_page->'items'->0->>'currency_name' <> 'US Dollar'
+     or v_movements_page->'items'->0->>'movement_role' <> 'ORIGIN' then
+    raise exception 'External movement query must include currency and association metadata';
+  end if;
+
+  begin
+    perform public.query_financial_operations(
+      '68000000-0000-0000-0000-000000000002',
+      '69000000-0000-0000-0000-000000000001', null, 25, 0
+    );
+  exception when insufficient_privilege then v_read_denied := true;
+  end;
+  if not v_read_denied then raise exception 'Cross-tenant financial read was not denied'; end if;
+
+  begin
+    perform public.query_external_movements(
+      '68000000-0000-0000-0000-000000000001',
+      '69000000-0000-0000-0000-000000000001', null, 101, 0
+    );
+  exception when invalid_parameter_value then v_bad_page := true;
+  end;
+  if not v_bad_page then raise exception 'Oversized page was not rejected'; end if;
+
 end;
 $$;
 
