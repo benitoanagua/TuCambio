@@ -75,7 +75,9 @@ declare
   denied boolean := false;
 begin
   if not has_function_privilege('tucambio_backend', 'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
-     or not has_function_privilege('tucambio_backend', 'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE') then
+     or not has_function_privilege('tucambio_backend', 'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE')
+     or not has_function_privilege('tucambio_backend', 'public.query_currency_rates(uuid,uuid,uuid,integer,integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.query_currency_rates(uuid,uuid,uuid,integer,integer)', 'EXECUTE') then
     raise exception 'Backend role must execute both financial read functions';
   end if;
   if has_function_privilege('authenticated', 'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
