@@ -8,8 +8,16 @@ declare
     'tenant_invitations', 'tenant_invitation_roles', 'tenant_security_audit_events'
   ];
 begin
-  if (select count(*) from public.capabilities) <> 6 then
-    raise exception 'Expected six canonical business capabilities';
+  if (select count(*) from public.capabilities
+      where code in (
+        'operations.operate', 'movements.verify', 'operations.settle',
+        'rates.manage', 'settings.manage', 'tenant.administer'
+      )) <> 6 then
+    raise exception 'Expected all six canonical business capabilities';
+  end if;
+
+  if not exists (select 1 from public.capabilities where code = 'financial.read') then
+    raise exception 'Expected the financial.read capability to be registered';
   end if;
 
   foreach table_name in array expected_tables loop
