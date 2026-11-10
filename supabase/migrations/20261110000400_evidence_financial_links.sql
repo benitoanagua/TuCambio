@@ -26,7 +26,7 @@ declare
   v_replay_id uuid;
   v_target_type text := upper(btrim(p_target_type));
 begin
-  if v_target_type not in ('OPERATION', 'MOVEMENT') then
+  if v_target_type is null or v_target_type not in ('OPERATION', 'MOVEMENT') then
     raise exception 'Evidence target type must be OPERATION or MOVEMENT'
       using errcode = '22023';
   end if;
