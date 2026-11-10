@@ -67,6 +67,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_financial_domain.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_financial_commands.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_movement_verification.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_source_rate_application.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_evidence_review.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_evidence_financial_links.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/assert_financial_reads.sql
