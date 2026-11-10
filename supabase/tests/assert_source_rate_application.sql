@@ -62,6 +62,9 @@ insert into public.financial_operations (
    'BOB', 'USD', 690, '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('87000000-0000-0000-0000-000000000003',
    '82000000-0000-0000-0000-000000000001', '85000000-0000-0000-0000-000000000001',
+   'USD', 'BOB', 100, '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('87000000-0000-0000-0000-000000000004',
+   '82000000-0000-0000-0000-000000000001', '85000000-0000-0000-0000-000000000001',
    'USD', 'BOB', 100, '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001');
 
 insert into public.external_movements (
@@ -76,6 +79,9 @@ insert into public.external_movements (
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('88000000-0000-0000-0000-000000000003',
    '82000000-0000-0000-0000-000000000001', 'USD', 100, '2026-11-10T12:00:00Z',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('88000000-0000-0000-0000-000000000004',
+   '82000000-0000-0000-0000-000000000001', 'BOB', 690, '2026-11-10T10:30:00Z',
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001');
 
 insert into public.operation_movements (
@@ -90,6 +96,9 @@ insert into public.operation_movements (
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000003',
    '88000000-0000-0000-0000-000000000003', 'ORIGIN',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000004',
+   '88000000-0000-0000-0000-000000000004', 'ORIGIN',
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001');
 
 set local role tucambio_backend;
@@ -101,21 +110,22 @@ declare
   v_hash text;
   i integer;
 begin
-  for i in 1..3 loop
+  for i in 1..4 loop
     v_movement := case i
       when 1 then '88000000-0000-0000-0000-000000000001'::uuid
       when 2 then '88000000-0000-0000-0000-000000000002'::uuid
-      else '88000000-0000-0000-0000-000000000003'::uuid
+      when 3 then '88000000-0000-0000-0000-000000000003'::uuid
+      else '88000000-0000-0000-0000-000000000004'::uuid
     end;
     v_key := 'source-rate-start-' || i;
-    v_hash := case i when 1 then repeat('21', 32) when 2 then repeat('22', 32) else repeat('23', 32) end;
+    v_hash := case i when 1 then repeat('21', 32) when 2 then repeat('22', 32) when 3 then repeat('23', 32) else repeat('24', 32) end;
     perform public.command_transition_external_movement(
       '81000000-0000-0000-0000-000000000001',
       '82000000-0000-0000-0000-000000000001',
       v_movement, 'IN_VERIFICATION', v_key, decode(v_hash, 'hex')
     );
     v_key := 'source-rate-confirm-' || i;
-    v_hash := case i when 1 then repeat('31', 32) when 2 then repeat('32', 32) else repeat('33', 32) end;
+    v_hash := case i when 1 then repeat('31', 32) when 2 then repeat('32', 32) when 3 then repeat('33', 32) else repeat('34', 32) end;
     v_result := public.command_transition_external_movement(
       '81000000-0000-0000-0000-000000000001',
       '82000000-0000-0000-0000-000000000001',
@@ -126,6 +136,9 @@ begin
     end if;
     if i = 3 and v_result->>'sourceRateResolution' <> 'RATE_NOT_FOUND' then
       raise exception 'Expected explicit missing-rate result: %', v_result;
+    end if;
+    if i = 4 and v_result->>'sourceRateResolution' <> 'SOURCE_CURRENCY_MISMATCH' then
+      raise exception 'Expected explicit source-currency mismatch result: %', v_result;
     end if;
   end loop;
 end;
@@ -173,6 +186,18 @@ begin
         and event_type = 'OPERATION_SOURCE_RATE_NOT_FOUND'
         and entity_id = '87000000-0000-0000-0000-000000000003') <> 1 then
     raise exception 'Missing source rate must be audited';
+  end if;
+
+  if exists (select 1 from public.financial_operations
+             where id = '87000000-0000-0000-0000-000000000004'
+               and (source_effective_at is not null or applied_rate_id is not null or applied_rate is not null)) then
+    raise exception 'A mismatched source currency must not be applied to the operation';
+  end if;
+  if (select count(*) from public.financial_domain_events
+      where entity_type = 'OPERATION'
+        and event_type = 'OPERATION_SOURCE_CURRENCY_MISMATCH'
+        and entity_id = '87000000-0000-0000-0000-000000000004') <> 1 then
+    raise exception 'Source-currency mismatch must be audited';
   end if;
 end;
 $$;
