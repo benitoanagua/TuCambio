@@ -90,8 +90,13 @@ begin
      or (select count(*) from public.tenant_security_audit_events) <> 1 then
     raise exception 'Tenant administrator cannot read tenant administration records';
   end if;
-  if (select count(*) from public.capabilities) <> 6 then
-    raise exception 'Authenticated capability catalog should be globally readable';
+  if (select count(*) from public.capabilities
+      where code in (
+        'operations.operate', 'movements.verify', 'operations.settle',
+        'rates.manage', 'settings.manage', 'tenant.administer'
+      )) <> 6
+     or not exists (select 1 from public.capabilities where code = 'financial.read') then
+    raise exception 'Authenticated capability catalog should expose all canonical capabilities';
   end if;
 end;
 $$;
