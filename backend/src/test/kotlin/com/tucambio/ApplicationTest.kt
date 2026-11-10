@@ -67,6 +67,14 @@ class ApplicationTest {
         paths.forEach { path ->
             assertEquals(HttpStatusCode.ServiceUnavailable, client.post(path).status)
         }
+        assertEquals(
+            HttpStatusCode.ServiceUnavailable,
+            client.get("/api/v1/tenants/$tenant/operations").status
+        )
+        assertEquals(
+            HttpStatusCode.ServiceUnavailable,
+            client.get("/api/v1/tenants/$tenant/movements").status
+        )
     }
 
     @Test

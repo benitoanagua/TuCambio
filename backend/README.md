@@ -38,6 +38,8 @@ Puerto por defecto: `8080`, configurable mediante `PORT`.
 | `POST /api/v1/tenants/{tenantId}/movements` | Registra movimiento externo declarado |
 | `POST /api/v1/tenants/{tenantId}/movement-associations` | Asocia un movimiento a una operación con rol ORIGIN o DESTINATION |
 | `POST /api/v1/tenants/{tenantId}/movements/{movementId}/transitions` | Avanza el ciclo de verificación de un movimiento externo |
+| `GET /api/v1/tenants/{tenantId}/operations` | Consulta operaciones financieras del tenant |
+| `GET /api/v1/tenants/{tenantId}/movements` | Consulta movimientos externos del tenant |
 
 Los endpoints de API requieren Bearer access token válido de Supabase. Sin `SUPABASE_URL`, responden 503.
 
@@ -114,3 +116,17 @@ El endpoint de transición recibe `{"targetStatus":"IN_VERIFICATION"}`, `{"targe
 El actor debe tener la capacidad `movements.verify` en el tenant. La función PostgreSQL bloquea la fila del movimiento durante la transición, persiste el nuevo estado, registra el evento de auditoría con estado anterior/nuevo, actor y timestamp, y guarda la clave idempotente en la misma transacción. Los reintentos con la misma clave y cuerpo devuelven el recurso original; una clave reutilizada con otro cuerpo produce conflicto. No hay transiciones inversas ni salida desde un estado terminal. Un movimiento confirmado permanece inmutable.
 
 Esta etapa no aplica tasas ni calcula importes. La tasa se resolverá en M1.8.2 usando el instante efectivo del movimiento de origen una vez confirmado.
+
+
+## Consultas financieras de lectura (M1.9.2)
+
+Las rutas `GET /api/v1/tenants/{tenantId}/operations` y `GET /api/v1/tenants/{tenantId}/movements` requieren Bearer JWT válido y capacidad explícita `financial.read` en el tenant. La API deriva el actor del subject JWT; nunca acepta actor o membership en query/body.
+
+Parámetros opcionales:
+- `status`: filtro exacto por estado.
+- `pageSize`: 1–100, default 25.
+- `offset`: 0–10000, default 0.
+
+La respuesta contiene `items`, `total`, `pageSize` y `offset`; el orden es determinista (`created_at DESC, id DESC`). Las funciones PostgreSQL vuelven a validar actor, tenant y capacidad. Ktor utiliza únicamente las funciones backend-only; no realiza SELECT directo sobre tablas financieras. La falta de capacidad responde 403, parámetros inválidos 400 y errores de base de datos 503. Las rutas responden 503 si la autenticación no está configurada.
+
+Estas consultas no calculan saldos, tasa aplicada ni importes finales y no cambian estados de negocio.

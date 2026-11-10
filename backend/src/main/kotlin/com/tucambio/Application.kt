@@ -36,7 +36,8 @@ fun Application.module(
     evidenceRepository: EvidenceRepository? = null,
     evidenceStorage: EvidenceObjectStorage? = null,
     evidenceReviewRepository: EvidenceReviewRepository? = null,
-    financialCommandRepository: FinancialCommandRepository? = null
+    financialCommandRepository: FinancialCommandRepository? = null,
+    financialReadRepository: FinancialReadRepository? = null
 ) {
     install(CallLogging)
     authConfig?.let(::installSupabaseJwtAuthentication)
@@ -67,6 +68,12 @@ fun Application.module(
     val financialCommands = effectiveFinancialCommandRepository?.let(::FinancialCommandService)
     if (effectiveFinancialCommandRepository != null && financialCommandRepository == null) {
         monitor.subscribe(ApplicationStopped) { effectiveFinancialCommandRepository.close() }
+    }
+    val effectiveFinancialReadRepository = financialReadRepository
+        ?: if (authConfig != null) PostgresFinancialReadRepository.fromEnvironment() else null
+    val financialReads = effectiveFinancialReadRepository?.let(::FinancialReadService)
+    if (effectiveFinancialReadRepository != null && financialReadRepository == null) {
+        monitor.subscribe(ApplicationStopped) { effectiveFinancialReadRepository.close() }
     }
 
     install(ContentNegotiation) {
@@ -102,11 +109,23 @@ fun Application.module(
             post("/api/v1/tenants/{tenantId}/movements") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             post("/api/v1/tenants/{tenantId}/movement-associations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            get("/api/v1/tenants/{tenantId}/operations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            get("/api/v1/tenants/{tenantId}/movements") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
         } else {
             authenticate("supabase") {
                 get("/api/v1/me") {
                     val principal = call.principal<JWTPrincipal>()
                     call.respond(ActorResponse(requireNotNull(principal).payload.subject))
+                }
+                get("/api/v1/tenants/{tenantId}/operations") {
+                    call.executeFinancialRead(financialReads) { actor, tenant, status, size, offset ->
+                        financialReads!!.operations(actor, tenant, status, size, offset)
+                    }
+                }
+                get("/api/v1/tenants/{tenantId}/movements") {
+                    call.executeFinancialRead(financialReads) { actor, tenant, status, size, offset ->
+                        financialReads!!.movements(actor, tenant, status, size, offset)
+                    }
                 }
                 get("/api/v1/tenants/{tenantId}/authorization") {
                     val actorId = UUID.fromString(requireNotNull(call.principal<JWTPrincipal>()).payload.subject)
@@ -350,5 +369,41 @@ private suspend fun ApplicationCall.executeFinancialCommand(
         }
     } catch (_: IllegalArgumentException) {
         respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_financial_command"))
+    }
+}
+
+private suspend fun ApplicationCall.executeFinancialRead(
+    service: FinancialReadService?,
+    query: (UUID, UUID, String?, Int, Int) -> kotlinx.serialization.json.JsonObject
+) {
+    val tenantId = parameters["tenantId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+    if (tenantId == null) {
+        respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_tenant_id"))
+        return
+    }
+    if (service == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_reads_not_configured"))
+        return
+    }
+    val actorId = runCatching {
+        UUID.fromString(requireNotNull(principal<JWTPrincipal>()).payload.subject)
+    }.getOrNull()
+    if (actorId == null) {
+        respond(HttpStatusCode.Unauthorized, ErrorResponse("invalid_actor"))
+        return
+    }
+    val status = request.queryParameters["status"]
+    val pageSize = request.queryParameters["pageSize"]?.toIntOrNull() ?: if (request.queryParameters["pageSize"] == null) 25 else -1
+    val offset = request.queryParameters["offset"]?.toIntOrNull() ?: if (request.queryParameters["offset"] == null) 0 else -1
+    try {
+        respond(query(actorId, tenantId, status, pageSize, offset))
+    } catch (e: FinancialReadValidationException) {
+        respond(HttpStatusCode.BadRequest, ErrorResponse(e.errorCode))
+    } catch (e: SQLException) {
+        when (e.sqlState) {
+            "42501" -> respond(HttpStatusCode.Forbidden, ErrorResponse("financial_read_access_denied"))
+            "22023" -> respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_pagination"))
+            else -> respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_read_unavailable"))
+        }
     }
 }
