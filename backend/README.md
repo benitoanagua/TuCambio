@@ -138,3 +138,10 @@ Estas consultas no calculan saldos, tasa aplicada ni importes finales y no cambi
 `GET /api/v1/tenants/{tenantId}/currency-rates` requiere JWT válido y la capacidad `financial.read`. Admite `pairId` opcional para filtrar por un par configurado, además de `pageSize` (1–100, default 25) y `offset` (0–10000, default 0).
 
 La respuesta incluye historial inmutable ordenado por `valid_from DESC, id DESC`, tasas de compra/venta, intervalo de vigencia y códigos de moneda del par. El actor se deriva del subject JWT; PostgreSQL revalida tenant y capacidad. El rol backend solo ejecuta la función de lectura y no recibe SELECT directo sobre tablas financieras. No se publica ni modifica una tasa desde esta ruta.
+
+
+## Historial de auditoría financiera (M1.10.2)
+
+La ruta `GET /api/v1/tenants/{tenantId}/events` requiere JWT válido y capacidad `financial.read`. Acepta `entityType` (CURRENCY, CURRENCY_PAIR, RATE, OPERATION, MOVEMENT o EVIDENCE_LINK), `entityId`, `pageSize` (1–100, default 25) y `offset` (0–10000, default 0). El orden es determinista por `occurred_at DESC, id DESC`.
+
+La consulta PostgreSQL vuelve a validar actor, tenant y capacidad, y solo es ejecutable por `tucambio_backend`. Devuelve ID del evento, actor usuario, entidad, tipo de evento, correlación y timestamp; excluye deliberadamente `payload` y membership IDs. No permite modificar ni reproducir eventos.

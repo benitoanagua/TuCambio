@@ -48,6 +48,28 @@ class FinancialReadQueriesTest {
     }
 
     @Test
+    fun eventsPassEntityFiltersAndPaginationToRepository() {
+        val entityId = UUID.fromString("30000000-0000-0000-0000-000000000001")
+        val result = service.events(actor, tenant, "MOVEMENT", entityId, 30, 60)
+        assertEquals(repository.response, result)
+        assertEquals("events", repository.lastQuery)
+        assertEquals(actor, repository.actorId)
+        assertEquals(tenant, repository.tenantId)
+        assertEquals("MOVEMENT", repository.entityType)
+        assertEquals(entityId, repository.entityId)
+        assertEquals(30, repository.pageSize)
+        assertEquals(60, repository.offset)
+    }
+
+    @Test
+    fun rejectsUnsupportedEventEntityType() {
+        assertFailsWith<FinancialReadValidationException> {
+            service.events(actor, tenant, "SECRET", null, 25, 0)
+        }
+        assertEquals(null, repository.lastQuery)
+    }
+
+    @Test
     fun rejectsInvalidPaginationBeforeCallingRepository() {
         assertFailsWith<FinancialReadValidationException> {
             service.operations(actor, tenant, null, 101, 0)
@@ -73,6 +95,8 @@ class FinancialReadQueriesTest {
         var actorId: UUID? = null
         var tenantId: UUID? = null
         var status: String? = null
+        var entityType: String? = null
+        var entityId: UUID? = null
         var pageSize: Int? = null
         var offset: Int? = null
         var lastQuery: String? = null
@@ -99,6 +123,16 @@ class FinancialReadQueriesTest {
             lastQuery = "rates"
             this.actorId = actorId
             this.tenantId = tenantId
+            this.pageSize = pageSize
+            this.offset = offset
+            return response
+        }
+        override fun queryEvents(actorId: UUID, tenantId: UUID, entityType: String?, entityId: UUID?, pageSize: Int, offset: Int): JsonObject {
+            lastQuery = "events"
+            this.actorId = actorId
+            this.tenantId = tenantId
+            this.entityType = entityType
+            this.entityId = entityId
             this.pageSize = pageSize
             this.offset = offset
             return response
