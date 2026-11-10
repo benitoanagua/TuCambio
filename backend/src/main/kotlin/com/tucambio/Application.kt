@@ -111,6 +111,7 @@ fun Application.module(
             post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             get("/api/v1/tenants/{tenantId}/operations") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             get("/api/v1/tenants/{tenantId}/movements") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            get("/api/v1/tenants/{tenantId}/currency-rates") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
         } else {
             authenticate("supabase") {
                 get("/api/v1/me") {
@@ -125,6 +126,17 @@ fun Application.module(
                 get("/api/v1/tenants/{tenantId}/movements") {
                     call.executeFinancialRead(financialReads) { actor, tenant, status, size, offset ->
                         financialReads!!.movements(actor, tenant, status, size, offset)
+                    }
+                }
+                get("/api/v1/tenants/{tenantId}/currency-rates") {
+                    val pairIdRaw = call.request.queryParameters["pairId"]
+                    val pairId = if (pairIdRaw == null) null else runCatching { UUID.fromString(pairIdRaw) }.getOrNull()
+                    if (pairIdRaw != null && pairId == null) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_pair_id"))
+                    } else {
+                        call.executeFinancialRead(financialReads) { actor, tenant, _, size, offset ->
+                            financialReads!!.rates(actor, tenant, pairId, size, offset)
+                        }
                     }
                 }
                 get("/api/v1/tenants/{tenantId}/authorization") {

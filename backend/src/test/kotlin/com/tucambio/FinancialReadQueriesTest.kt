@@ -35,6 +35,19 @@ class FinancialReadQueriesTest {
     }
 
     @Test
+    fun currencyRatesCanBeFilteredByPair() {
+        val pair = UUID.fromString("30000000-0000-0000-0000-000000000001")
+        val result = service.rates(actor, tenant, pair, 30, 60)
+
+        assertEquals(repository.response, result)
+        assertEquals("rates", repository.lastQuery)
+        assertEquals(actor, repository.actorId)
+        assertEquals(tenant, repository.tenantId)
+        assertEquals(30, repository.pageSize)
+        assertEquals(60, repository.offset)
+    }
+
+    @Test
     fun rejectsInvalidPaginationBeforeCallingRepository() {
         assertFailsWith<FinancialReadValidationException> {
             service.operations(actor, tenant, null, 101, 0)
@@ -81,5 +94,14 @@ class FinancialReadQueriesTest {
 
         override fun queryMovements(actorId: UUID, tenantId: UUID, status: String?, pageSize: Int, offset: Int) =
             capture("movements", actorId, tenantId, status, pageSize, offset)
+
+        override fun queryRates(actorId: UUID, tenantId: UUID, pairId: UUID?, pageSize: Int, offset: Int): JsonObject {
+            lastQuery = "rates"
+            this.actorId = actorId
+            this.tenantId = tenantId
+            this.pageSize = pageSize
+            this.offset = offset
+            return response
+        }
     }
 }

@@ -42,6 +42,17 @@ insert into public.tenant_currency_pairs (
   ('75000000-0000-0000-0000-000000000001', '72000000-0000-0000-0000-000000000001', 'USD', 'BOB', '73000000-0000-0000-0000-000000000001', '71000000-0000-0000-0000-000000000001'),
   ('75000000-0000-0000-0000-000000000002', '72000000-0000-0000-0000-000000000002', 'USD', 'BOB', '73000000-0000-0000-0000-000000000002', '71000000-0000-0000-0000-000000000002');
 
+insert into public.currency_rates (
+  id, tenant_id, pair_id, buy_rate, sell_rate, valid_from, valid_until,
+  created_by_membership_id, created_by_user_id
+) values
+  ('78000000-0000-0000-0000-000000000001', '72000000-0000-0000-0000-000000000001',
+   '75000000-0000-0000-0000-000000000001', 6.90, 6.95, '2026-11-01T10:00:00Z', '2026-11-01T11:00:00Z',
+   '73000000-0000-0000-0000-000000000001', '71000000-0000-0000-0000-000000000001'),
+  ('78000000-0000-0000-0000-000000000002', '72000000-0000-0000-0000-000000000002',
+   '75000000-0000-0000-0000-000000000002', 7.00, 7.05, '2026-11-01T10:00:00Z', null,
+   '73000000-0000-0000-0000-000000000002', '71000000-0000-0000-0000-000000000002');
+
 insert into public.financial_operations (
   id, tenant_id, pair_id, source_currency_code, target_currency_code,
   requested_amount, status, created_by_membership_id, created_by_user_id, created_at
@@ -64,7 +75,9 @@ declare
   denied boolean := false;
 begin
   if not has_function_privilege('tucambio_backend', 'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
-     or not has_function_privilege('tucambio_backend', 'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE') then
+     or not has_function_privilege('tucambio_backend', 'public.query_external_movements(uuid,uuid,text,integer,integer)', 'EXECUTE')
+     or not has_function_privilege('tucambio_backend', 'public.query_currency_rates(uuid,uuid,uuid,integer,integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.query_currency_rates(uuid,uuid,uuid,integer,integer)', 'EXECUTE') then
     raise exception 'Backend role must execute both financial read functions';
   end if;
   if has_function_privilege('authenticated', 'public.query_financial_operations(uuid,uuid,text,integer,integer)', 'EXECUTE')
@@ -167,6 +180,37 @@ begin
     denied := true;
   end;
   if not denied then raise exception 'Out-of-range offset unexpectedly accepted'; end if;
+
+  result := public.query_currency_rates(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000001', null, 25, 0
+  );
+  if (result->>'total')::integer <> 1
+     or jsonb_array_length(result->'items') <> 1
+     or result->'items'->0->>'buy_rate' <> '6.900000000000000000'
+     or result->'items'->0->>'base_currency_code' <> 'USD' then
+    raise exception 'Currency rate history must be tenant-scoped and include pair identity';
+  end if;
+
+  result := public.query_currency_rates(
+    '71000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000001',
+    '75000000-0000-0000-0000-000000000001', 1, 0
+  );
+  if (result->>'total')::integer <> 1 or jsonb_array_length(result->'items') <> 1 then
+    raise exception 'Currency rate pair filter or pagination is incorrect';
+  end if;
+
+  denied := false;
+  begin
+    perform public.query_currency_rates(
+      '71000000-0000-0000-0000-000000000002',
+      '72000000-0000-0000-0000-000000000001', null, 25, 0
+    );
+  exception when insufficient_privilege then
+    denied := true;
+  end;
+  if not denied then raise exception 'Cross-tenant actor unexpectedly read currency rates'; end if;
 end;
 $$;
 

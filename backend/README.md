@@ -40,6 +40,7 @@ Puerto por defecto: `8080`, configurable mediante `PORT`.
 | `POST /api/v1/tenants/{tenantId}/movements/{movementId}/transitions` | Avanza el ciclo de verificación de un movimiento externo |
 | `GET /api/v1/tenants/{tenantId}/operations` | Consulta operaciones financieras del tenant |
 | `GET /api/v1/tenants/{tenantId}/movements` | Consulta movimientos externos del tenant |
+| `GET /api/v1/tenants/{tenantId}/currency-rates` | Consulta historial de tasas del tenant, opcionalmente por par |
 
 Los endpoints de API requieren Bearer access token válido de Supabase. Sin `SUPABASE_URL`, responden 503.
 
@@ -130,3 +131,10 @@ Parámetros opcionales:
 La respuesta contiene `items`, `total`, `pageSize` y `offset`; el orden es determinista (`created_at DESC, id DESC`). Las funciones PostgreSQL vuelven a validar actor, tenant y capacidad. Ktor utiliza únicamente las funciones backend-only; no realiza SELECT directo sobre tablas financieras. La falta de capacidad responde 403, parámetros inválidos 400 y errores de base de datos 503. Las rutas responden 503 si la autenticación no está configurada.
 
 Estas consultas no calculan saldos, tasa aplicada ni importes finales y no cambian estados de negocio.
+
+
+## Historial de tasas de cambio (M1.10.1)
+
+`GET /api/v1/tenants/{tenantId}/currency-rates` requiere JWT válido y la capacidad `financial.read`. Admite `pairId` opcional para filtrar por un par configurado, además de `pageSize` (1–100, default 25) y `offset` (0–10000, default 0).
+
+La respuesta incluye historial inmutable ordenado por `valid_from DESC, id DESC`, tasas de compra/venta, intervalo de vigencia y códigos de moneda del par. El actor se deriva del subject JWT; PostgreSQL revalida tenant y capacidad. El rol backend solo ejecuta la función de lectura y no recibe SELECT directo sobre tablas financieras. No se publica ni modifica una tasa desde esta ruta.

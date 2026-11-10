@@ -75,6 +75,10 @@ class ApplicationTest {
             HttpStatusCode.ServiceUnavailable,
             client.get("/api/v1/tenants/$tenant/movements").status
         )
+        assertEquals(
+            HttpStatusCode.ServiceUnavailable,
+            client.get("/api/v1/tenants/$tenant/currency-rates").status
+        )
     }
 
     @Test

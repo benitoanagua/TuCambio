@@ -14,6 +14,7 @@ import javax.sql.DataSource
 interface FinancialReadRepository : AutoCloseable {
     fun queryOperations(actorId: UUID, tenantId: UUID, status: String?, pageSize: Int, offset: Int): JsonObject
     fun queryMovements(actorId: UUID, tenantId: UUID, status: String?, pageSize: Int, offset: Int): JsonObject
+    fun queryRates(actorId: UUID, tenantId: UUID, pairId: UUID?, pageSize: Int, offset: Int): JsonObject
     override fun close() {}
 }
 
@@ -33,6 +34,30 @@ class PostgresFinancialReadRepository private constructor(
         "select public.query_external_movements(?, ?, ?, ?, ?)",
         actorId, tenantId, status, pageSize, offset
     )
+
+    override fun queryRates(
+        actorId: UUID, tenantId: UUID, pairId: UUID?, pageSize: Int, offset: Int
+    ) = executeRates(actorId, tenantId, pairId, pageSize, offset)
+
+    private fun executeRates(
+        actorId: UUID, tenantId: UUID, pairId: UUID?, pageSize: Int, offset: Int
+    ): JsonObject {
+        require(pageSize in 1..100 && offset in 0..10000) { "Invalid pagination window" }
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("select public.query_currency_rates(?, ?, ?, ?, ?)").use { statement ->
+                statement.setObject(1, actorId)
+                statement.setObject(2, tenantId)
+                statement.setObject(3, pairId)
+                statement.setInt(4, pageSize)
+                statement.setInt(5, offset)
+                statement.executeQuery().use { result ->
+                    if (!result.next()) throw java.sql.SQLException("Currency rate query returned no result")
+                    return Json.parseToJsonElement(result.getString(1)) as? JsonObject
+                        ?: throw java.sql.SQLException("Currency rate query returned invalid JSON")
+                }
+            }
+        }
+    }
 
     private fun execute(
         sql: String,
@@ -113,6 +138,11 @@ class FinancialReadService(private val repository: FinancialReadRepository) {
     fun movements(actorId: UUID, tenantId: UUID, status: String?, pageSize: Int, offset: Int): JsonObject {
         validate(status, pageSize, offset)
         return repository.queryMovements(actorId, tenantId, status, pageSize, offset)
+    }
+
+    fun rates(actorId: UUID, tenantId: UUID, pairId: UUID?, pageSize: Int, offset: Int): JsonObject {
+        validate(null, pageSize, offset)
+        return repository.queryRates(actorId, tenantId, pairId, pageSize, offset)
     }
 
     private fun validate(status: String?, pageSize: Int, offset: Int) {
