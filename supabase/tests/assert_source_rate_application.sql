@@ -1,5 +1,5 @@
--- M1.8.2: rate is selected only from a confirmed ORIGIN movement's effective instant.
--- Covers direction, half-open boundary, no-rate behavior and audit trail.
+-- M1.8.4: rate selection and immutable verified-source amount snapshot.
+-- Covers direction, half-open boundary, requested-vs-verified amount, no-rate behavior and audit trail.
 begin;
 
 insert into auth.users (id, email) values
@@ -72,7 +72,7 @@ insert into public.external_movements (
   created_by_membership_id, created_by_user_id
 ) values
   ('88000000-0000-0000-0000-000000000001',
-   '82000000-0000-0000-0000-000000000001', 'USD', 100, '2026-11-10T10:59:59Z',
+   '82000000-0000-0000-0000-000000000001', 'USD', 98.75, '2026-11-10T10:59:59Z',
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('88000000-0000-0000-0000-000000000002',
    '82000000-0000-0000-0000-000000000001', 'BOB', 690, '2026-11-10T11:00:00Z',
@@ -170,6 +170,43 @@ begin
       and applied_rate_id is null
       and applied_rate is null
   ) then raise exception 'Missing rate must preserve source instant without inventing a rate'; end if;
+
+  if not exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000001'
+      and verified_source_movement_id = '88000000-0000-0000-0000-000000000001'
+      and verified_source_amount = 98.75
+      and requested_amount = 100
+  ) then raise exception 'Verified source amount must snapshot the movement, not the requested amount'; end if;
+
+  if not exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000002'
+      and verified_source_movement_id = '88000000-0000-0000-0000-000000000002'
+      and verified_source_amount = 690
+  ) then raise exception 'Quote-currency source amount must be snapshotted'; end if;
+
+  if not exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000003'
+      and verified_source_movement_id = '88000000-0000-0000-0000-000000000003'
+      and verified_source_amount = 100
+  ) then raise exception 'Verified source amount must be preserved even when no rate exists'; end if;
+
+  if exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000004'
+      and (verified_source_movement_id is not null or verified_source_amount is not null)
+  ) then raise exception 'A mismatched source currency must not be snapshotted'; end if;
+
+  begin
+    update public.financial_operations
+    set verified_source_amount = 99
+    where id = '87000000-0000-0000-0000-000000000001';
+    raise exception 'Verified source amount mutation should have been rejected';
+  exception when sqlstate '55000' then
+    null;
+  end;
 
   if (select count(*) from public.financial_domain_events
       where entity_type = 'OPERATION'
