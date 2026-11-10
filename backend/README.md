@@ -37,6 +37,7 @@ Puerto por defecto: `8080`, configurable mediante `PORT`.
 | `POST /api/v1/tenants/{tenantId}/operations` | Crea operación financiera en estado inicial |
 | `POST /api/v1/tenants/{tenantId}/movements` | Registra movimiento externo declarado |
 | `POST /api/v1/tenants/{tenantId}/movement-associations` | Asocia un movimiento a una operación con rol ORIGIN o DESTINATION |
+| `POST /api/v1/tenants/{tenantId}/evidence-links` | Asocia una evidencia disponible a una operación o movimiento |
 | `POST /api/v1/tenants/{tenantId}/movements/{movementId}/transitions` | Avanza el ciclo de verificación de un movimiento externo |
 | `GET /api/v1/tenants/{tenantId}/operations` | Consulta operaciones financieras del tenant |
 | `GET /api/v1/tenants/{tenantId}/movements` | Consulta movimientos externos del tenant |
@@ -145,3 +146,14 @@ La respuesta incluye historial inmutable ordenado por `valid_from DESC, id DESC`
 La ruta `GET /api/v1/tenants/{tenantId}/events` requiere JWT válido y capacidad `financial.read`. Acepta `entityType` (CURRENCY, CURRENCY_PAIR, RATE, OPERATION, MOVEMENT o EVIDENCE_LINK), `entityId`, `pageSize` (1–100, default 25) y `offset` (0–10000, default 0). El orden es determinista por `occurred_at DESC, id DESC`.
 
 La consulta PostgreSQL vuelve a validar actor, tenant y capacidad, y solo es ejecutable por `tucambio_backend`. Devuelve ID del evento, actor usuario, entidad, tipo de evento, correlación y timestamp; excluye deliberadamente `payload` y membership IDs. No permite modificar ni reproducir eventos.
+
+
+## Asociación financiera de evidencias (M1.11.1)
+
+`POST /api/v1/tenants/{tenantId}/evidence-links` requiere Bearer JWT válido y `Idempotency-Key`. El cuerpo contiene `evidenceId`, `targetType` (`OPERATION` o `MOVEMENT`) y `targetId`.
+
+La evidencia debe existir en el mismo tenant y tener integridad de almacenamiento `available`. Para asociar a una operación se exige `operations.operate`; para asociar a un movimiento se exige `movements.verify`. PostgreSQL vuelve a comprobar actor, tenant y capacidad dentro del comando transaccional.
+
+Una evidencia puede documentar una operación y un movimiento relacionado. No puede vincularse a dos movimientos distintos, evitando su reutilización silenciosa para respaldar hechos externos incompatibles. Las asociaciones son append-only y generan eventos de auditoría. Los reintentos con la misma clave y contenido son idempotentes.
+
+La asociación no modifica `status`, `review_status`, ni el estado del movimiento. Vincular un comprobante no lo valida ni confirma un movimiento. La revisión documental y la verificación del hecho externo siguen siendo procesos separados.

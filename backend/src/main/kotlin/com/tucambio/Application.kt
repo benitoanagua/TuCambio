@@ -37,7 +37,8 @@ fun Application.module(
     evidenceStorage: EvidenceObjectStorage? = null,
     evidenceReviewRepository: EvidenceReviewRepository? = null,
     financialCommandRepository: FinancialCommandRepository? = null,
-    financialReadRepository: FinancialReadRepository? = null
+    financialReadRepository: FinancialReadRepository? = null,
+    evidenceFinancialLinkRepository: EvidenceFinancialLinkRepository? = null
 ) {
     install(CallLogging)
     authConfig?.let(::installSupabaseJwtAuthentication)
@@ -72,6 +73,12 @@ fun Application.module(
     val effectiveFinancialReadRepository = financialReadRepository
         ?: if (authConfig != null) PostgresFinancialReadRepository.fromEnvironment() else null
     val financialReads = effectiveFinancialReadRepository?.let(::FinancialReadService)
+    val effectiveEvidenceFinancialLinkRepository = evidenceFinancialLinkRepository
+        ?: if (authConfig != null) PostgresEvidenceFinancialLinkRepository.fromEnvironment() else null
+    val evidenceFinancialLinks = effectiveEvidenceFinancialLinkRepository?.let(::EvidenceFinancialLinkService)
+    if (effectiveEvidenceFinancialLinkRepository != null && evidenceFinancialLinkRepository == null) {
+        monitor.subscribe(ApplicationStopped) { effectiveEvidenceFinancialLinkRepository.close() }
+    }
     if (effectiveFinancialReadRepository != null && financialReadRepository == null) {
         monitor.subscribe(ApplicationStopped) { effectiveFinancialReadRepository.close() }
     }
@@ -113,6 +120,7 @@ fun Application.module(
             get("/api/v1/tenants/{tenantId}/movements") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             get("/api/v1/tenants/{tenantId}/currency-rates") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
             get("/api/v1/tenants/{tenantId}/events") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
+            post("/api/v1/tenants/{tenantId}/evidence-links") { call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("authentication_not_configured")) }
         } else {
             authenticate("supabase") {
                 get("/api/v1/me") {
@@ -287,6 +295,12 @@ fun Application.module(
                     if (financialCommands == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("financial_commands_not_configured"))
                     else call.executeFinancialCommand { actor, tenant, key ->
                         financialCommands.associateMovement(actor, tenant, call.receive<AssociateExternalMovementRequest>(), key)
+                    }
+                }
+                post("/api/v1/tenants/{tenantId}/evidence-links") {
+                    if (evidenceFinancialLinks == null) call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("evidence_links_not_configured"))
+                    else call.executeFinancialCommand { actor, tenant, key ->
+                        evidenceFinancialLinks.link(actor, tenant, call.receive<LinkFinancialEvidenceRequest>(), key)
                     }
                 }
                 post("/api/v1/tenants/{tenantId}/movements/{movementId}/transitions") {
