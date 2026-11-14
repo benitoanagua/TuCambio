@@ -15,7 +15,9 @@ insert into public.tenant_roles (id, tenant_id, code, name) values
    'source-rate-reviewer', 'Source Rate Reviewer');
 insert into public.tenant_role_capabilities (tenant_id, role_id, capability_code)
 values ('82000000-0000-0000-0000-000000000001',
-        '84000000-0000-0000-0000-000000000001', 'movements.verify');
+        '84000000-0000-0000-0000-000000000001', 'movements.verify'),
+       ('82000000-0000-0000-0000-000000000001',
+        '84000000-0000-0000-0000-000000000001', 'financial.read');
 insert into public.membership_roles (tenant_id, membership_id, role_id)
 values ('82000000-0000-0000-0000-000000000001',
         '83000000-0000-0000-0000-000000000001', '84000000-0000-0000-0000-000000000001');
@@ -178,6 +180,29 @@ begin
     '88000000-0000-0000-0000-000000000006', 'CONFIRMED',
     'destination-confirm-2', decode(repeat('44', 32), 'hex')
   );
+end;
+$$;
+reset role;
+
+set local role tucambio_backend;
+do $
+declare
+  v_page jsonb;
+  v_item jsonb;
+begin
+  v_page := public.query_financial_operations(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    null, 25, 0
+  );
+  select value into v_item
+  from jsonb_array_elements(v_page->'items')
+  where value->>'id' = '87000000-0000-0000-0000-000000000001';
+  if v_item->>'verified_destination_movement_id' <> '88000000-0000-0000-0000-000000000005'
+     or v_item->>'verified_destination_amount' <> '680.25'
+     or v_item->>'destination_effective_at' <> '2026-11-10T11:30:00+00:00' then
+    raise exception 'Financial operation read must expose the verified destination snapshot';
+  end if;
 end;
 $;
 reset role;
