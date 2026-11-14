@@ -173,7 +173,7 @@ begin
   if (select count(*) from public.financial_domain_events
       where tenant_id = '92000000-0000-0000-0000-000000000001'
         and entity_type = 'EVIDENCE_LINK'
-        and event_type = 'EVIDENCE_LINK_CREATED') <> 2 then
+        and event_type in ('EVIDENCE_LINKED_TO_OPERATION', 'EVIDENCE_LINKED_TO_MOVEMENT')) <> 2 then
     raise exception 'Each successful evidence link must emit one creation event';
   end if;
 
