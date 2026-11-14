@@ -410,6 +410,6 @@ begin
     raise exception 'Source-rate audit events changed after rejected mutation attempts';
   end if;
 end;
-$;
+$$;
 
 rollback;
