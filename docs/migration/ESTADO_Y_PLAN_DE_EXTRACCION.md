@@ -1,8 +1,8 @@
 # Estado de migración: Tu-Pago-App → TuCambio
 
 **Fecha de corte:** 2026-11-14  
-**Rama de trabajo:** `migration/m1-13-destination-snapshot-isolation`  
-**Base:** `main` en `b9eb1a966e5cc84af6db623d9702ad0c41193c8e`
+**Rama de trabajo:** `migration/m1-14-financial-audit-integrity`  
+**Base:** `main` en `b86bf8da582de7bcdf498afb161979f117cd3622`
 
 ## 1. Propósito
 
@@ -94,7 +94,9 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 - [x] Verificar membresías, capacidades, aislamiento tenant y RLS en la base actual.
 - [x] Cubrir el aislamiento cross-tenant en comandos y consultas financieras, incluido el snapshot de destino.
 - [ ] Completar auditoría sistemática de pruebas negativas para cada nuevo comando/consulta.
-- [ ] Completar revisión de eventos de auditoría y recuperación ante fallos.
+- [x] Verificar que los eventos de los comandos financieros conserven actor y membresía reales, tenant, tipo de entidad y taxonomía esperada.
+- [x] Probar que el historial de eventos financieros rechace UPDATE y DELETE.
+- [ ] Completar revisión de cobertura de eventos en todos los comandos y recuperación ante fallos.
 
 ### M4/M5 — Aplicaciones, integración y publicación
 
@@ -106,7 +108,7 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 
 ## 6. Próximo bloque de implementación
 
-**M1.12 está integrado en `main` mediante el PR #28.** Captura el movimiento de destino confirmado como hecho externo inmutable y lo expone en consultas financieras. M1.13 refuerza la prueba de aislamiento tenant de esa lectura. El siguiente bloque es la auditoría sistemática de autorización y auditoría de comandos/consultas; las reglas de incidencias y transiciones económicas siguen bloqueadas hasta aprobar las políticas pendientes.
+**M1.12 está integrado en `main` mediante el PR #28.** Captura el movimiento de destino confirmado como hecho externo inmutable y lo expone en consultas financieras. M1.13 refuerza la prueba de aislamiento tenant de esa lectura. El siguiente bloque M1.14 amplía la auditoría financiera: atribución de actor/membresía, taxonomía de eventos por comando e inmutabilidad append-only. Después se completará la cobertura de auditoría de todos los comandos y los escenarios de recuperación; las reglas de incidencias y transiciones económicas siguen bloqueadas hasta aprobar las políticas pendientes.
 
 Este bloque no debe:
 - transferir fondos ni llamar a bancos;
