@@ -1,8 +1,8 @@
 # Estado de migración: Tu-Pago-App → TuCambio
 
-**Fecha de corte:** 2026-11-13  
-**Rama:** `migration/tu-pago-core-extraction`  
-**Base:** `main` en `19460cbb709f5814c82cb643ffd311ca0236397d`
+**Fecha de corte:** 2026-11-14  
+**Rama de trabajo:** `migration/m1-13-destination-snapshot-isolation`  
+**Base:** `main` en `b9eb1a966e5cc84af6db623d9702ad0c41193c8e`
 
 ## 1. Propósito
 
@@ -23,6 +23,7 @@ En la revisión del repositorio `benitoanagua/TuCambio` se verificó:
 - Asociación explícita de movimientos a operaciones con rol de origen o destino.
 - Verificación de movimientos externos y resolución de tasa desde el instante efectivo del movimiento de origen confirmado.
 - Snapshot inmutable del movimiento e importe de origen verificados.
+- Snapshot inmutable del movimiento, importe e instante efectivo de destino confirmados, expuesto en consultas financieras.
 - Cálculo monetario genérico con precisión configurada por moneda y modo de redondeo explícito.
 - Asociaciones de evidencias, consultas financieras e historial de auditoría.
 
@@ -83,14 +84,16 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 - [x] Verificar asociación de evidencias.
 - [x] Capturar en la operación el snapshot inmutable del movimiento de destino confirmado, validando tenant, asociación y moneda.
 - [x] Probar importe/instante exactos, rechazo de moneda destino incompatible y protección contra mutación.
-- [ ] Exponer el snapshot de destino en consultas de lectura sin revelar datos de otros tenants.
+- [x] Exponer el snapshot de destino en consultas de lectura.
+- [x] Añadir una prueba negativa que impide a un actor sin membresía leer el snapshot de destino de otro tenant.
 - [ ] Completar el contrato de incidencias y transiciones posteriores sin inventar reglas de liquidación.
 - [ ] Asegurar que diferencias, incidencias y estados no se resuelvan automáticamente.
 
 ### M3 — Operador, seguridad y auditoría
 
 - [x] Verificar membresías, capacidades, aislamiento tenant y RLS en la base actual.
-- [ ] Auditar pruebas negativas cross-tenant para cada nuevo comando/consulta.
+- [x] Cubrir el aislamiento cross-tenant en comandos y consultas financieras, incluido el snapshot de destino.
+- [ ] Completar auditoría sistemática de pruebas negativas para cada nuevo comando/consulta.
 - [ ] Completar revisión de eventos de auditoría y recuperación ante fallos.
 
 ### M4/M5 — Aplicaciones, integración y publicación
@@ -103,7 +106,7 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 
 ## 6. Próximo bloque de implementación
 
-El primer subbloque M1.12 captura el **movimiento de destino confirmado** como un hecho externo inmutable. El siguiente paso es exponer ese snapshot en las consultas de lectura y completar las reglas de incidencias/transiciones cuando se aprueben las políticas pendientes.
+**M1.12 está integrado en `main` mediante el PR #28.** Captura el movimiento de destino confirmado como hecho externo inmutable y lo expone en consultas financieras. M1.13 refuerza la prueba de aislamiento tenant de esa lectura. El siguiente bloque es la auditoría sistemática de autorización y auditoría de comandos/consultas; las reglas de incidencias y transiciones económicas siguen bloqueadas hasta aprobar las políticas pendientes.
 
 Este bloque no debe:
 - transferir fondos ni llamar a bancos;
@@ -112,7 +115,7 @@ Este bloque no debe:
 - introducir cuentas o proveedores específicos en el dominio;
 - marcar una operación como liquidada solo por registrar un movimiento.
 
-Antes de implementar, contrastar el contrato con las reglas completas de las secciones 24–26 y 29–35 de la especificación y con los módulos equivalentes de Tu-Pago-App.
+Antes de implementar reglas económicas nuevas, contrastar el contrato con las secciones 24–26 y 29–35 de la especificación y con los módulos equivalentes de Tu-Pago-App. No resolver P13/P14 ni otras políticas pendientes por inferencia.
 
 ## 7. Criterio de avance
 
