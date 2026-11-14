@@ -82,6 +82,12 @@ insert into public.external_movements (
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('88000000-0000-0000-0000-000000000004',
    '82000000-0000-0000-0000-000000000001', 'BOB', 690, '2026-11-10T10:30:00Z',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('88000000-0000-0000-0000-000000000005',
+   '82000000-0000-0000-0000-000000000001', 'BOB', 680.25, '2026-11-10T11:30:00Z',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('88000000-0000-0000-0000-000000000006',
+   '82000000-0000-0000-0000-000000000001', 'BOB', 700, '2026-11-10T11:40:00Z',
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001');
 
 insert into public.operation_movements (
@@ -99,6 +105,12 @@ insert into public.operation_movements (
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000004',
    '88000000-0000-0000-0000-000000000004', 'ORIGIN',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000001',
+   '88000000-0000-0000-0000-000000000005', 'DESTINATION',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000002',
+   '88000000-0000-0000-0000-000000000006', 'DESTINATION',
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001');
 
 set local role tucambio_backend;
@@ -141,12 +153,60 @@ begin
       raise exception 'Expected explicit source-currency mismatch result: %', v_result;
     end if;
   end loop;
+  -- Confirm the destination movements after their explicit associations.
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000005', 'IN_VERIFICATION',
+    'destination-start-1', decode(repeat('41', 32), 'hex')
+  );
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000005', 'CONFIRMED',
+    'destination-confirm-1', decode(repeat('42', 32), 'hex')
+  );
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000006', 'IN_VERIFICATION',
+    'destination-start-2', decode(repeat('43', 32), 'hex')
+  );
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000006', 'CONFIRMED',
+    'destination-confirm-2', decode(repeat('44', 32), 'hex')
+  );
 end;
-$$;
+$;
 reset role;
 
-do $$
+do $
 begin
+  if not exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000001'
+      and verified_destination_movement_id = '88000000-0000-0000-0000-000000000005'
+      and verified_destination_amount = 680.25
+      and destination_effective_at = '2026-11-10T11:30:00Z'
+  ) then raise exception 'Confirmed destination amount must be snapshotted exactly'; end if;
+
+  if exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000002'
+      and verified_destination_movement_id is not null
+  ) then raise exception 'Destination currency mismatch must not be snapshotted'; end if;
+
+  begin
+    update public.financial_operations
+    set verified_destination_amount = 681
+    where id = '87000000-0000-0000-0000-000000000001';
+    raise exception 'Verified destination amount mutation should have been rejected';
+  exception when sqlstate '55000' then
+    null;
+  end;
+
   if not exists (
     select 1 from public.financial_operations
     where id = '87000000-0000-0000-0000-000000000001'
