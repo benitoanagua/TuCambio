@@ -185,7 +185,7 @@ $$;
 reset role;
 
 set local role tucambio_backend;
-do $
+do $read$
 declare
   v_page jsonb;
   v_item jsonb;
@@ -204,7 +204,7 @@ begin
     raise exception 'Financial operation read must expose the verified destination snapshot';
   end if;
 end;
-$;
+$read$;
 reset role;
 
 do $
