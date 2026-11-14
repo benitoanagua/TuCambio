@@ -16,6 +16,7 @@ alter table public.financial_operations
       and destination_effective_at is null)
     or
     (verified_destination_movement_id is not null
+      and verified_destination_amount is not null
       and verified_destination_amount > 0
       and destination_effective_at is not null)
   );
