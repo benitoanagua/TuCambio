@@ -335,6 +335,80 @@ begin
         and entity_id = '87000000-0000-0000-0000-000000000004') <> 1 then
     raise exception 'Source-currency mismatch must be audited';
   end if;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '82000000-0000-0000-0000-000000000001'
+        and entity_type = 'OPERATION'
+        and entity_id in (
+          '87000000-0000-0000-0000-000000000001',
+          '87000000-0000-0000-0000-000000000002',
+          '87000000-0000-0000-0000-000000000003',
+          '87000000-0000-0000-0000-000000000004'
+        )
+        and (
+          actor_user_id <> '81000000-0000-0000-0000-000000000001'
+          or actor_membership_id <> '83000000-0000-0000-0000-000000000001'
+        )) <> 0 then
+    raise exception 'Source-rate audit events must retain the command actor and membership';
+  end if;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '82000000-0000-0000-0000-000000000001'
+        and entity_type = 'OPERATION'
+        and event_type in (
+          'OPERATION_SOURCE_RATE_APPLIED',
+          'OPERATION_SOURCE_RATE_NOT_FOUND',
+          'OPERATION_SOURCE_CURRENCY_MISMATCH'
+        )
+        and entity_id in (
+          '87000000-0000-0000-0000-000000000001',
+          '87000000-0000-0000-0000-000000000002',
+          '87000000-0000-0000-0000-000000000003',
+          '87000000-0000-0000-0000-000000000004'
+        )) <> 4 then
+    raise exception 'Source-rate resolution must emit exactly one audit event per resolved operation';
+  end if;
+
+  begin
+    update public.financial_domain_events
+    set occurred_at = occurred_at
+    where id = (
+      select id from public.financial_domain_events
+      where tenant_id = '82000000-0000-0000-0000-000000000001'
+        and entity_type = 'OPERATION'
+        and event_type = 'OPERATION_SOURCE_RATE_APPLIED'
+        and entity_id = '87000000-0000-0000-0000-000000000001'
+      order by occurred_at, id limit 1
+    );
+    raise exception 'Source-rate audit event update unexpectedly succeeded';
+  exception when sqlstate '55000' then null;
+  end;
+
+  begin
+    delete from public.financial_domain_events
+    where id = (
+      select id from public.financial_domain_events
+      where tenant_id = '82000000-0000-0000-0000-000000000001'
+        and entity_type = 'OPERATION'
+        and event_type = 'OPERATION_SOURCE_RATE_NOT_FOUND'
+        and entity_id = '87000000-0000-0000-0000-000000000003'
+      order by occurred_at, id limit 1
+    );
+    raise exception 'Source-rate audit event delete unexpectedly succeeded';
+  exception when sqlstate '55000' then null;
+  end;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '82000000-0000-0000-0000-000000000001'
+        and entity_type = 'OPERATION'
+        and entity_id in (
+          '87000000-0000-0000-0000-000000000001',
+          '87000000-0000-0000-0000-000000000002',
+          '87000000-0000-0000-0000-000000000003',
+          '87000000-0000-0000-0000-000000000004'
+        )) <> 4 then
+    raise exception 'Source-rate audit events changed after rejected mutation attempts';
+  end if;
 end;
 $$;
 
