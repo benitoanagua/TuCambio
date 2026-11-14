@@ -196,6 +196,65 @@ begin
       where tenant_id = '69000000-0000-0000-0000-000000000001') <> 7 then
     raise exception 'Each successful financial command must append one domain event';
   end if;
+
+  if exists (
+    select 1 from public.financial_domain_events
+    where tenant_id = '69000000-0000-0000-0000-000000000001'
+      and (actor_user_id <> '68000000-0000-0000-0000-000000000001'
+        or actor_membership_id <> '6a000000-0000-0000-0000-000000000001')
+  ) then
+    raise exception 'Financial audit events must preserve the authenticated command actor and tenant membership';
+  end if;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '69000000-0000-0000-0000-000000000001'
+        and event_type in ('CURRENCY_CREATED', 'CURRENCY_PAIR_CREATED',
+          'CURRENCY_RATE_CREATED', 'OPERATION_CREATED', 'MOVEMENT_DECLARED',
+          'MOVEMENT_ASSOCIATED')) <> 7
+     or (select count(*) from public.financial_domain_events
+         where tenant_id = '69000000-0000-0000-0000-000000000001'
+           and entity_type = 'CURRENCY') <> 2
+     or (select count(*) from public.financial_domain_events
+         where tenant_id = '69000000-0000-0000-0000-000000000001'
+           and entity_type = 'CURRENCY_PAIR') <> 1
+     or (select count(*) from public.financial_domain_events
+         where tenant_id = '69000000-0000-0000-0000-000000000001'
+           and entity_type = 'RATE') <> 1
+     or (select count(*) from public.financial_domain_events
+         where tenant_id = '69000000-0000-0000-0000-000000000001'
+           and entity_type = 'OPERATION') <> 1
+     or (select count(*) from public.financial_domain_events
+         where tenant_id = '69000000-0000-0000-0000-000000000001'
+           and entity_type = 'MOVEMENT') <> 2 then
+    raise exception 'Financial commands must emit the expected entity/event audit taxonomy';
+  end if;
+
+  begin
+    update public.financial_domain_events
+    set payload = payload || jsonb_build_object('tampered', true)
+    where id = (
+      select id from public.financial_domain_events
+      where tenant_id = '69000000-0000-0000-0000-000000000001'
+      order by occurred_at, id limit 1
+    );
+    raise exception 'Financial audit event update unexpectedly succeeded';
+  exception when sqlstate '55000' then
+    null;
+  end;
+
+  begin
+    delete from public.financial_domain_events
+    where tenant_id = '69000000-0000-0000-0000-000000000001'
+      and event_type = 'MOVEMENT_ASSOCIATED';
+    raise exception 'Financial audit event deletion unexpectedly succeeded';
+  exception when sqlstate '55000' then
+    null;
+  end;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '69000000-0000-0000-0000-000000000001') <> 7 then
+    raise exception 'Financial audit history must remain append-only';
+  end if;
 end;
 $$;
 
