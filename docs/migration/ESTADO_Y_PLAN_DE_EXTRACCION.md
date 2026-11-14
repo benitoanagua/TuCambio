@@ -81,7 +81,10 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 - [x] Verificar creación de operación y registro de movimientos externos.
 - [x] Verificar asociación origen/destino, verificación y snapshot de origen.
 - [x] Verificar asociación de evidencias.
-- [ ] Completar el contrato del movimiento de destino y su verificación sin inventar reglas de liquidación.
+- [x] Capturar en la operación el snapshot inmutable del movimiento de destino confirmado, validando tenant, asociación y moneda.
+- [x] Probar importe/instante exactos, rechazo de moneda destino incompatible y protección contra mutación.
+- [ ] Exponer el snapshot de destino en consultas de lectura sin revelar datos de otros tenants.
+- [ ] Completar el contrato de incidencias y transiciones posteriores sin inventar reglas de liquidación.
 - [ ] Asegurar que diferencias, incidencias y estados no se resuelvan automáticamente.
 
 ### M3 — Operador, seguridad y auditoría
@@ -100,7 +103,7 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 
 ## 6. Próximo bloque de implementación
 
-El siguiente bloque debe cerrar el contrato del **movimiento de destino**: requisitos para registrarlo, asociarlo a la operación, adjuntar evidencia y verificarlo; autorización, idempotencia, auditoría y concurrencia; y pruebas SQL/Kotlin.
+El primer subbloque M1.12 captura el **movimiento de destino confirmado** como un hecho externo inmutable. El siguiente paso es exponer ese snapshot en las consultas de lectura y completar las reglas de incidencias/transiciones cuando se aprueben las políticas pendientes.
 
 Este bloque no debe:
 - transferir fondos ni llamar a bancos;
