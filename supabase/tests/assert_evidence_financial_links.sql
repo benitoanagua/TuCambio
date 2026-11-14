@@ -159,7 +159,55 @@ begin
         and entity_type = 'EVIDENCE_LINK') <> 2 then
     raise exception 'Evidence link audit events are incomplete or duplicated';
   end if;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '92000000-0000-0000-0000-000000000001'
+        and entity_type = 'EVIDENCE_LINK'
+        and (
+          actor_user_id <> '91000000-0000-0000-0000-000000000001'
+          or actor_membership_id <> '93000000-0000-0000-0000-000000000001'
+        )) <> 0 then
+    raise exception 'Evidence-link events must retain the command actor and membership';
+  end if;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '92000000-0000-0000-0000-000000000001'
+        and entity_type = 'EVIDENCE_LINK'
+        and event_type = 'EVIDENCE_LINK_CREATED') <> 2 then
+    raise exception 'Each successful evidence link must emit one creation event';
+  end if;
+
+  begin
+    update public.financial_domain_events
+    set occurred_at = occurred_at
+    where id = (
+      select id from public.financial_domain_events
+      where tenant_id = '92000000-0000-0000-0000-000000000001'
+        and entity_type = 'EVIDENCE_LINK'
+      order by occurred_at, id limit 1
+    );
+    raise exception 'Evidence-link audit event update unexpectedly succeeded';
+  exception when sqlstate '55000' then null;
+  end;
+
+  begin
+    delete from public.financial_domain_events
+    where id = (
+      select id from public.financial_domain_events
+      where tenant_id = '92000000-0000-0000-0000-000000000001'
+        and entity_type = 'EVIDENCE_LINK'
+      order by occurred_at, id limit 1
+    );
+    raise exception 'Evidence-link audit event delete unexpectedly succeeded';
+  exception when sqlstate '55000' then null;
+  end;
+
+  if (select count(*) from public.financial_domain_events
+      where tenant_id = '92000000-0000-0000-0000-000000000001'
+        and entity_type = 'EVIDENCE_LINK') <> 2 then
+    raise exception 'Evidence-link audit history changed after rejected mutation attempts';
+  end if;
 end;
-$$;
+$;
 
 rollback;
