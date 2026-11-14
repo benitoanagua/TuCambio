@@ -147,3 +147,16 @@ Al confirmar un movimiento asociado con rol `ORIGIN`, si la moneda coincide con 
 El snapshot se conserva incluso si no existe una tasa vigente. Si la moneda no coincide, no se copia el importe ni se aplica una tasa. La base de datos comprueba que el movimiento esté confirmado, asociado como `ORIGIN`, pertenezca al mismo tenant y coincida en moneda, importe e instante. Una vez asignado, el snapshot es inmutable.
 
 Este dato no sustituye `requested_amount`: ambos pueden diferir y la diferencia no se corrige automáticamente. Tampoco constituye el importe calculado de destino. El cálculo final permanece pendiente de la política de redondeo P04 y de las políticas económicas aplicables; esta migración no inventa ni congela esas decisiones.
+
+
+## 11. Snapshot del movimiento de destino confirmado (M1.12)
+
+Cuando un movimiento asociado explícitamente con rol `DESTINATION` pasa a `CONFIRMED`, PostgreSQL captura en la operación el identificador del movimiento, su importe exacto y su instante efectivo, siempre que la moneda coincida con la moneda destino de la operación.
+
+- El snapshot solo puede establecerse una vez y es inmutable.
+- La base de datos comprueba que el movimiento esté confirmado, pertenezca al mismo tenant y esté asociado a esa operación con rol `DESTINATION`.
+- Una moneda destino distinta no genera snapshot.
+- La confirmación del movimiento y la captura del snapshot ocurren en la misma transacción que la transición.
+- El evento `MOVEMENT_CONFIRMED` conserva el actor que realizó la confirmación.
+
+Este snapshot representa el hecho externo reportado/verificado, no una aprobación del importe esperado. No compara contra un monto final calculado, no resuelve pagos insuficientes/excesivos, no aplica comisiones y no finaliza la operación. Las políticas P13/P14 y las transiciones posteriores siguen pendientes de decisión.
