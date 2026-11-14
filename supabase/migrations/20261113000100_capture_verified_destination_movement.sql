@@ -79,7 +79,6 @@ as $$
 declare
   v_operation_id uuid;
   v_target_currency text;
-  v_membership_id uuid;
 begin
   if old.status = new.status or new.status <> 'CONFIRMED' then
     return new;
@@ -100,33 +99,10 @@ begin
   where o.tenant_id = new.tenant_id and o.id = v_operation_id
   for update;
 
+  -- Currency mismatches remain confirmed external facts but are not snapshotted.
   if v_target_currency is distinct from new.currency_code then
-    select tm.id into v_membership_id
-    from public.tenant_memberships tm
-    where tm.tenant_id = new.tenant_id
-      and tm.user_id = new.created_by_user_id
-    limit 1;
-
-    insert into public.financial_domain_events (
-      tenant_id, actor_membership_id, actor_user_id,
-      entity_type, entity_id, event_type, payload
-    ) values (
-      new.tenant_id, v_membership_id, new.created_by_user_id,
-      'OPERATION', v_operation_id, 'OPERATION_DESTINATION_CURRENCY_MISMATCH',
-      jsonb_build_object(
-        'movementId', new.id,
-        'movementCurrency', new.currency_code,
-        'operationTargetCurrency', v_target_currency
-      )
-    );
     return new;
   end if;
-
-  select tm.id into v_membership_id
-  from public.tenant_memberships tm
-  where tm.tenant_id = new.tenant_id
-    and tm.user_id = new.created_by_user_id
-  limit 1;
 
   update public.financial_operations
   set verified_destination_movement_id = new.id,
@@ -134,20 +110,6 @@ begin
       destination_effective_at = new.effective_at,
       updated_at = now()
   where tenant_id = new.tenant_id and id = v_operation_id;
-
-  insert into public.financial_domain_events (
-    tenant_id, actor_membership_id, actor_user_id,
-    entity_type, entity_id, event_type, payload
-  ) values (
-    new.tenant_id, v_membership_id, new.created_by_user_id,
-    'OPERATION', v_operation_id, 'OPERATION_DESTINATION_MOVEMENT_CONFIRMED',
-    jsonb_build_object(
-      'movementId', new.id,
-      'currencyCode', new.currency_code,
-      'amount', new.amount,
-      'effectiveAt', new.effective_at
-    )
-  );
 
   return new;
 end;
