@@ -189,6 +189,7 @@ do $read$
 declare
   v_page jsonb;
   v_item jsonb;
+  v_cross_tenant_denied boolean := false;
 begin
   v_page := public.query_financial_operations(
     '81000000-0000-0000-0000-000000000001',
@@ -202,6 +203,19 @@ begin
      or (v_item->>'verified_destination_amount')::numeric <> 680.25::numeric
      or (v_item->>'destination_effective_at')::timestamptz <> '2026-11-10T11:30:00Z'::timestamptz then
     raise exception 'Financial operation read must expose the verified destination snapshot';
+  end if;
+
+  begin
+    perform public.query_financial_operations(
+      '81000000-0000-0000-0000-000000000002',
+      '82000000-0000-0000-0000-000000000001',
+      null, 25, 0
+    );
+  exception when insufficient_privilege then
+    v_cross_tenant_denied := true;
+  end;
+  if not v_cross_tenant_denied then
+    raise exception 'A non-member must not read destination snapshots from another tenant';
   end if;
 end;
 $read$;
