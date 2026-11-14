@@ -207,7 +207,7 @@ end;
 $read$;
 reset role;
 
-do $
+do $$
 begin
   if not exists (
     select 1 from public.financial_operations
