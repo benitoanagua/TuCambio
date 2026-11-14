@@ -168,3 +168,10 @@ La dirección se resuelve respecto al par configurado: si la moneda entregada es
 La confirmación del movimiento no depende de que exista una tasa. Si no hay una tasa vigente, el movimiento se confirma, la operación conserva el instante efectivo de origen, la tasa permanece sin asignar y se registra `OPERATION_SOURCE_RATE_NOT_FOUND`; no se inventa ni extrapola una tasa. Si la moneda del movimiento no coincide con la moneda origen de la operación, no se aplica tasa y se registra una incidencia de auditoría por discrepancia.
 
 Esta etapa **no calcula el importe final**, no aplica comisiones ni redondeo, y no inicia la liquidación. Esas reglas siguen sujetas a las políticas pendientes de la especificación.
+
+
+## Snapshot del movimiento de destino (M1.12)
+
+Al confirmar un movimiento externo asociado con rol `DESTINATION`, PostgreSQL conserva en la operación el ID, importe exacto e instante efectivo del movimiento, siempre que su moneda coincida con la moneda destino. La captura es transaccional e inmutable. Una discrepancia de moneda no se copia a la operación.
+
+El snapshot no demuestra que el pago sea suficiente ni excesivo, no calcula ni modifica el importe esperado y no finaliza la operación. Las políticas económicas P13/P14 permanecen pendientes; la confirmación del movimiento solo registra el hecho externo verificado.
