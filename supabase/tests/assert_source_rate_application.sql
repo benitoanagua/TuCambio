@@ -15,7 +15,9 @@ insert into public.tenant_roles (id, tenant_id, code, name) values
    'source-rate-reviewer', 'Source Rate Reviewer');
 insert into public.tenant_role_capabilities (tenant_id, role_id, capability_code)
 values ('82000000-0000-0000-0000-000000000001',
-        '84000000-0000-0000-0000-000000000001', 'movements.verify');
+        '84000000-0000-0000-0000-000000000001', 'movements.verify'),
+       ('82000000-0000-0000-0000-000000000001',
+        '84000000-0000-0000-0000-000000000001', 'financial.read');
 insert into public.membership_roles (tenant_id, membership_id, role_id)
 values ('82000000-0000-0000-0000-000000000001',
         '83000000-0000-0000-0000-000000000001', '84000000-0000-0000-0000-000000000001');
@@ -82,6 +84,12 @@ insert into public.external_movements (
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('88000000-0000-0000-0000-000000000004',
    '82000000-0000-0000-0000-000000000001', 'BOB', 690, '2026-11-10T10:30:00Z',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('88000000-0000-0000-0000-000000000005',
+   '82000000-0000-0000-0000-000000000001', 'BOB', 680.25, '2026-11-10T11:30:00Z',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('88000000-0000-0000-0000-000000000006',
+   '82000000-0000-0000-0000-000000000001', 'BOB', 700, '2026-11-10T11:40:00Z',
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001');
 
 insert into public.operation_movements (
@@ -99,6 +107,12 @@ insert into public.operation_movements (
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
   ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000004',
    '88000000-0000-0000-0000-000000000004', 'ORIGIN',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000001',
+   '88000000-0000-0000-0000-000000000005', 'DESTINATION',
+   '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001'),
+  ('82000000-0000-0000-0000-000000000001', '87000000-0000-0000-0000-000000000002',
+   '88000000-0000-0000-0000-000000000006', 'DESTINATION',
    '83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001');
 
 set local role tucambio_backend;
@@ -141,12 +155,83 @@ begin
       raise exception 'Expected explicit source-currency mismatch result: %', v_result;
     end if;
   end loop;
+  -- Confirm the destination movements after their explicit associations.
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000005', 'IN_VERIFICATION',
+    'destination-start-1', decode(repeat('41', 32), 'hex')
+  );
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000005', 'CONFIRMED',
+    'destination-confirm-1', decode(repeat('42', 32), 'hex')
+  );
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000006', 'IN_VERIFICATION',
+    'destination-start-2', decode(repeat('43', 32), 'hex')
+  );
+  perform public.command_transition_external_movement(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    '88000000-0000-0000-0000-000000000006', 'CONFIRMED',
+    'destination-confirm-2', decode(repeat('44', 32), 'hex')
+  );
 end;
 $$;
 reset role;
 
+set local role tucambio_backend;
+do $read$
+declare
+  v_page jsonb;
+  v_item jsonb;
+begin
+  v_page := public.query_financial_operations(
+    '81000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    null, 25, 0
+  );
+  select value into v_item
+  from jsonb_array_elements(v_page->'items')
+  where value->>'id' = '87000000-0000-0000-0000-000000000001';
+  if (v_item->>'verified_destination_movement_id')::uuid <> '88000000-0000-0000-0000-000000000005'::uuid
+     or (v_item->>'verified_destination_amount')::numeric <> 680.25::numeric
+     or (v_item->>'destination_effective_at')::timestamptz <> '2026-11-10T11:30:00Z'::timestamptz then
+    raise exception 'Financial operation read must expose the verified destination snapshot';
+  end if;
+end;
+$read$;
+reset role;
+
 do $$
 begin
+  if not exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000001'
+      and verified_destination_movement_id = '88000000-0000-0000-0000-000000000005'
+      and verified_destination_amount = 680.25
+      and destination_effective_at = '2026-11-10T11:30:00Z'
+  ) then raise exception 'Confirmed destination amount must be snapshotted exactly'; end if;
+
+  if exists (
+    select 1 from public.financial_operations
+    where id = '87000000-0000-0000-0000-000000000002'
+      and verified_destination_movement_id is not null
+  ) then raise exception 'Destination currency mismatch must not be snapshotted'; end if;
+
+  begin
+    update public.financial_operations
+    set verified_destination_amount = 681
+    where id = '87000000-0000-0000-0000-000000000001';
+    raise exception 'Verified destination amount mutation should have been rejected';
+  exception when sqlstate '55000' then
+    null;
+  end;
+
   if not exists (
     select 1 from public.financial_operations
     where id = '87000000-0000-0000-0000-000000000001'
