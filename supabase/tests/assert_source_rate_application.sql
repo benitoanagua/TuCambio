@@ -198,9 +198,9 @@ begin
   select value into v_item
   from jsonb_array_elements(v_page->'items')
   where value->>'id' = '87000000-0000-0000-0000-000000000001';
-  if v_item->>'verified_destination_movement_id' <> '88000000-0000-0000-0000-000000000005'
-     or v_item->>'verified_destination_amount' <> '680.25'
-     or v_item->>'destination_effective_at' <> '2026-11-10T11:30:00+00:00' then
+  if (v_item->>'verified_destination_movement_id')::uuid <> '88000000-0000-0000-0000-000000000005'::uuid
+     or (v_item->>'verified_destination_amount')::numeric <> 680.25::numeric
+     or (v_item->>'destination_effective_at')::timestamptz <> '2026-11-10T11:30:00Z'::timestamptz then
     raise exception 'Financial operation read must expose the verified destination snapshot';
   end if;
 end;
