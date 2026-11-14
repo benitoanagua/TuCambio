@@ -1,8 +1,8 @@
 # Estado de migración: Tu-Pago-App → TuCambio
 
 **Fecha de corte:** 2026-11-14  
-**Rama de trabajo:** `migration/m1-14-financial-audit-integrity`  
-**Base:** `main` en `b86bf8da582de7bcdf498afb161979f117cd3622`
+**Rama de trabajo:** `migration/m1-15-audit-command-coverage`  
+**Base:** `main` en `b11078122b6dbe7f7cd23865448c76e7abe61a46`
 
 ## 1. Propósito
 
@@ -14,7 +14,7 @@ La migración extrae contratos, reglas y pruebas que sean aplicables después de
 
 En la revisión del repositorio `benitoanagua/TuCambio` se verificó:
 
-- Rama principal `main`, commit `19460cbb709f5814c82cb643ffd311ca0236397d`.
+- Rama principal `main`, commit `b11078122b6dbe7f7cd23865448c76e7abe61a46`.
 - Backend Kotlin/JVM + Ktor.
 - PostgreSQL 17 como base de validación de migraciones y Supabase como plataforma destino.
 - Autenticación JWT de Supabase y resolución de membresía/capacidades por tenant.
@@ -96,7 +96,7 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 - [ ] Completar auditoría sistemática de pruebas negativas para cada nuevo comando/consulta.
 - [x] Verificar que los eventos de los comandos financieros conserven actor y membresía reales, tenant, tipo de entidad y taxonomía esperada.
 - [x] Probar que el historial de eventos financieros rechace UPDATE y DELETE.
-- [ ] Completar revisión de cobertura de eventos en todos los comandos y recuperación ante fallos.
+- [x] Ampliar pruebas de atribución e inmutabilidad para eventos de aplicación de tasa de origen y vínculos de evidencias.\n- [ ] Completar revisión de cobertura de eventos en todos los comandos y recuperación ante fallos.
 
 ### M4/M5 — Aplicaciones, integración y publicación
 
@@ -108,7 +108,7 @@ Las políticas P01–P22 de `especificacion/17-politicas-pendientes/politicas-pe
 
 ## 6. Próximo bloque de implementación
 
-**M1.12 está integrado en `main` mediante el PR #28.** Captura el movimiento de destino confirmado como hecho externo inmutable y lo expone en consultas financieras. M1.13 refuerza la prueba de aislamiento tenant de esa lectura. El siguiente bloque M1.14 amplía la auditoría financiera: atribución de actor/membresía, taxonomía de eventos por comando e inmutabilidad append-only. Después se completará la cobertura de auditoría de todos los comandos y los escenarios de recuperación; las reglas de incidencias y transiciones económicas siguen bloqueadas hasta aprobar las políticas pendientes.
+**M1.12 está integrado en `main` mediante el PR #28.** Captura el movimiento de destino confirmado como hecho externo inmutable y lo expone en consultas financieras. M1.13 refuerza la prueba de aislamiento tenant de esa lectura. M1.14 quedó integrado mediante el PR #30: atribución de actor/membresía, taxonomía de eventos por comando e inmutabilidad append-only. M1.15 amplía la cobertura de auditoría en la aplicación de tasas de origen y los vínculos de evidencias, comprobando atribución, ausencia de duplicados y rechazo de UPDATE/DELETE. Después se completará la cobertura de auditoría de todos los comandos y los escenarios de recuperación; las reglas de incidencias y transiciones económicas siguen bloqueadas hasta aprobar las políticas pendientes.
 
 Este bloque no debe:
 - transferir fondos ni llamar a bancos;
