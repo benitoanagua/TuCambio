@@ -208,6 +208,6 @@ begin
     raise exception 'Evidence-link audit history changed after rejected mutation attempts';
   end if;
 end;
-$;
+$$;
 
 rollback;
